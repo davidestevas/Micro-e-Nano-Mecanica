@@ -1,0 +1,86 @@
+# ==============================================================================
+# Passo 2.2: Pesquisa em grelha 10x10 x 4 cutoffs para Cu Sigma5(310)[001] (B3)
+# Periodo primitivo no plano: px = 5.7156982853 A, py = 3.614925 A
+# Cutoffs: 0.3, 0.5, 0.7, 0.9 * d_nn (d_nn = 2.556138 A)
+# ==============================================================================
+variable        ecoh equal -3.540218330205
+variable        conv equal 16.02176634
+variable        px   equal 5.715698285342089
+variable        py   equal 3.614925000000000
+variable        dnn  equal 2.556138050115838
+
+print           "ix,iy,cf_frac,rc_A,dx_A,dy_A,N_total,N_slab,E_slab_eV,Area_A2,gamma_GB_Jm2,fz_top_eVA" file gb310_grid_400.csv screen no
+
+variable        cf index 0.3 0.5 0.7 0.9
+label           loopCF
+
+  variable      ix loop 0 9
+  label         loopX
+
+    variable    iy loop 0 9
+    label       loopY
+
+      clear
+      units           metal
+      dimension       3
+      boundary        p p s
+      atom_style      atomic
+
+      read_data       data.gb_H40
+
+      pair_style      eam/alloy
+      pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+      neighbor        2.0 bin
+      neigh_modify    every 1 delay 0 check yes
+
+      group           lower type 1
+      group           upper type 2
+
+      variable        dx equal ${ix}*${px}/10.0
+      variable        dy equal ${iy}*${py}/10.0
+      variable        rc equal ${cf}*${dnn}
+
+      displace_atoms  upper move ${dx} ${dy} 0.0 units box
+      delete_atoms    overlap ${rc} upper lower
+
+      # Camadas exteriores rigidas (> 2*r_cut = 11.01 A):
+      # Base totalmente fixa; topo rigido livre em z para relaxar volume de excesso (sigma_zz = 0)
+      region          r_bot   block INF INF INF INF INF -28.0 units box
+      region          r_top   block INF INF INF INF  28.0 INF units box
+      region          r_slab  block INF INF INF INF -22.0 22.0 units box
+
+      group           bot_fix region r_bot
+      group           top_fix region r_top
+      group           gb_slab region r_slab
+
+      fix             f_bot   bot_fix setforce 0.0 0.0 0.0
+      fix             f_topxy top_fix setforce 0.0 0.0 NULL
+      fix             f_topz  top_fix aveforce NULL NULL 0.0
+
+      compute         pea    all pe/atom
+      compute         eslab  gb_slab reduce sum c_pea
+      compute         fztop  top_fix reduce sum fz
+
+      thermo          500
+      thermo_style    custom step pe c_eslab c_fztop fmax
+
+      min_style       cg
+      minimize        0.0 1.0e-10 5000 50000
+      run             0
+
+      variable        Ntot  equal $(atoms)
+      variable        Nslab equal $(count(gb_slab))
+      variable        Eslab equal $(c_eslab)
+      variable        Area  equal $(lx*ly)
+      variable        gam   equal (v_Eslab-v_Nslab*v_ecoh)/v_Area*v_conv
+      variable        fzval equal $(c_fztop)
+
+      print           "${ix},${iy},${cf},${rc},${dx},${dy},${Ntot},${Nslab},${Eslab},${Area},${gam},${fzval}" append gb310_grid_400.csv screen no
+
+    next        iy
+    jump        SELF loopY
+  next          ix
+  jump          SELF loopX
+next            cf
+jump            SELF loopCF

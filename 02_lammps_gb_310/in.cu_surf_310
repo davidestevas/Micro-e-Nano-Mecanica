@@ -1,0 +1,43 @@
+# ==============================================================================
+# Passo 2.1: Energia de superficie gamma_s(310) de Cu a 0 K (40 vs 80 planos)
+# Ecoh exato do Passo 1.1: -3.540218330205 eV/atom
+# ==============================================================================
+variable        ecoh equal -3.540218330205
+variable        conv equal 16.02176634
+
+print           "slab,N_atoms,Area_A2,E_tot_eV,gamma_s_Jm2" file surf310_summary.csv screen no
+
+variable        tag index 40p 80p
+label           loopS
+
+  clear
+  units           metal
+  dimension       3
+  boundary        p p s
+  atom_style      atomic
+
+  read_data       data.surf310_${tag}
+
+  pair_style      eam/alloy
+  pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+
+  neighbor        2.0 bin
+  neigh_modify    every 1 delay 0 check yes
+
+  thermo          50
+  thermo_style    custom step pe lx ly fmax
+
+  min_style       cg
+  minimize        0.0 1.0e-12 10000 100000
+  run             0
+
+  variable        Nat  equal $(atoms)
+  variable        Area equal $(lx*ly)
+  variable        Etot equal $(pe)
+  variable        gam  equal (v_Etot-v_Nat*v_ecoh)/(2.0*v_Area)*v_conv
+
+  print           "Surface (310) [${tag}]: N=${Nat}, A=$(v_Area:%.4f) A^2, gamma_s = $(v_gam:%.6f) J/m^2 ($(v_gam*1000:%.2f) mJ/m^2)"
+  print           "${tag},${Nat},${Area},${Etot},${gam}" append surf310_summary.csv screen no
+
+next            tag
+jump            SELF loopS

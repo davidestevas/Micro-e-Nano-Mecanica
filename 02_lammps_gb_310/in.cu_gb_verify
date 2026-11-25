@@ -1,0 +1,84 @@
+# ==============================================================================
+# Passo 2.3: Relaxacao 3D completa (Fx=Fy=Fz=0) e verificacao de espessura (B3)
+# Compara H_grain = 40 A vs H_grain = 80 A (criterio: |Delta gamma_GB| < 1 mJ/m^2)
+# ==============================================================================
+variable        ecoh equal -3.540218330205
+variable        conv equal 16.02176634
+variable        dx   equal 2.0*5.715698285342089/10.0
+variable        dy   equal 0.0
+variable        rc   equal 0.7*2.556138050115838
+
+print           "size,N_total,N_slab,Area_A2,gamma_GB_Jm2,fx_top,fy_top,fz_top" file gb310_thickness_check.csv screen no
+
+variable        isize index 1 2
+label           loopSize
+
+  clear
+  units           metal
+  dimension       3
+  boundary        p p s
+  atom_style      atomic
+
+  if "${isize} == 1" then "variable tag string H40" "variable zfix equal 28.0" "variable zslab equal 22.0"
+  if "${isize} == 2" then "variable tag string H80" "variable zfix equal 68.0" "variable zslab equal 62.0"
+
+  read_data       data.gb_${tag}
+
+  pair_style      eam/alloy
+  pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+  neighbor        2.0 bin
+  neigh_modify    every 1 delay 0 check yes
+
+  group           lower type 1
+  group           upper type 2
+
+  displace_atoms  upper move ${dx} ${dy} 0.0 units box
+  delete_atoms    overlap ${rc} upper lower
+
+  region          r_bot   block INF INF INF INF INF -${zfix} units box
+  region          r_top   block INF INF INF INF  ${zfix} INF units box
+  region          r_slab  block INF INF INF INF -${zslab} ${zslab} units box
+
+  group           bot_fix region r_bot
+  group           top_fix region r_top
+  group           gb_slab region r_slab
+
+  # Base fixa; topo rigido livre para transladar em x, y e z ate Fx=Fy=Fz=0
+  fix             f_bot bot_fix setforce 0.0 0.0 0.0
+  fix             f_top top_fix aveforce 0.0 0.0 0.0
+
+  compute         pea   all pe/atom
+  compute         eslab gb_slab reduce sum c_pea
+  compute         ftop  top_fix reduce sum fx fy fz
+
+  thermo          100
+  thermo_style    custom step pe c_eslab c_ftop[1] c_ftop[2] c_ftop[3] fmax
+
+  min_style       cg
+  minimize        0.0 1.0e-12 10000 100000
+  run             0
+
+  variable        Ntot  equal $(atoms)
+  variable        Nslab equal $(count(gb_slab))
+  variable        Eslab equal $(c_eslab)
+  variable        Area  equal $(lx*ly)
+  variable        gam   equal (v_Eslab-v_Nslab*v_ecoh)/v_Area*v_conv
+  variable        fxv   equal $(c_ftop[1])
+  variable        fyv   equal $(c_ftop[2])
+  variable        fzv   equal $(c_ftop[3])
+
+  print           "VERIFY [${tag}]: N=${Ntot}, N_slab=${Nslab}, gamma_GB = $(v_gam:%.6f) J/m^2 ($(v_gam*1000:%.3f) mJ/m^2) | F_top = ($(v_fxv:%.2e), $(v_fyv:%.2e), $(v_fzv:%.2e)) eV/A"
+  print           "${tag},${Ntot},${Nslab},${Area},${gam},${fxv},${fyv},${fzv}" append gb310_thickness_check.csv screen no
+
+  # Exportar dump com c_pea ANTES do write_data
+  reset_timestep  0
+  dump            d_eq all custom 1 dump.gb310_${tag}_eq.lammpstrj id type x y z c_pea
+  dump_modify     d_eq first yes sort id
+  run             0
+  undump          d_eq
+
+  write_data      data.gb310_${tag}_eq
+
+next            isize
+jump            SELF loopSize
