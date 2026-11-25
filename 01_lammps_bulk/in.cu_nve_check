@@ -1,0 +1,85 @@
+# ==============================================================================
+# Passo 1.2: Verificacao NVE a 300 K (dt = 1.0 fs vs 0.5 fs)
+# Verifica drift relativo < 1e-4, H <= 0.05 (Eq. 30.8) e convergencia O(dt^2)
+# ==============================================================================
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+lattice         fcc 3.614925
+region          box block 0 6 0 6 0 6
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# 1. Equilibracao curta em NPT a 300 K (10 ps) para preparar o estado inicial
+timestep        0.001
+velocity        all create 600.0 492845 mom yes rot yes dist gaussian
+
+thermo          2000
+thermo_style    custom step temp pe ke etotal press lx
+
+fix             eq all npt temp 300.0 300.0 0.1 iso 0.0 0.0 1.0
+run             10000
+unfix           eq
+
+# Zerar momento linear antes de iniciar NVE
+velocity        all zero linear
+write_restart   restart.nve_init
+
+# 2. Corrida microcanonica (NVE) 20 ps com dt = 1.0 fs
+reset_timestep  0
+timestep        0.001
+fix             nve1 all nve
+
+variable        t_ps  equal step*dt
+variable        T     equal temp
+variable        PE    equal pe
+variable        KE    equal ke
+variable        Etot  equal etotal
+variable        px_cm equal vcm(all,x)
+variable        py_cm equal vcm(all,y)
+variable        pz_cm equal vcm(all,z)
+
+fix             out1 all print 10 "${t_ps} ${T} ${PE} ${KE} ${Etot} ${px_cm} ${py_cm} ${pz_cm}" file nve_300K_dt1p0.dat screen no title "# t_ps Temp_K PE_eV KE_eV Etot_eV vcmx vcmy vcmz"
+
+thermo          5000
+thermo_style    custom step temp pe ke etotal
+run             20000
+
+unfix           out1
+unfix           nve1
+
+# 3. Corrida microcanonica (NVE) 20 ps com dt = 0.5 fs a partir do mesmo estado
+clear
+read_restart    restart.nve_init
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+reset_timestep  0
+timestep        0.0005
+fix             nve2 all nve
+
+variable        t_ps  equal step*dt
+variable        T     equal temp
+variable        PE    equal pe
+variable        KE    equal ke
+variable        Etot  equal etotal
+variable        px_cm equal vcm(all,x)
+variable        py_cm equal vcm(all,y)
+variable        pz_cm equal vcm(all,z)
+
+fix             out2 all print 20 "${t_ps} ${T} ${PE} ${KE} ${Etot} ${px_cm} ${py_cm} ${pz_cm}" file nve_300K_dt0p5.dat screen no title "# t_ps Temp_K PE_eV KE_eV Etot_eV vcmx vcmy vcmz"
+
+thermo          10000
+thermo_style    custom step temp pe ke etotal
+run             40000

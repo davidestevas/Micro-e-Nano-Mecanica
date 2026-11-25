@@ -1,0 +1,114 @@
+# ==============================================================================
+# Passo 1.1: Verificacao do potencial Cu_mishin1.eam.alloy a 0 K
+# Calcula: a0, Ecoh, matriz C_IJ completa (6x6) por diferencas centrais, e Ev^f
+# ==============================================================================
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+variable        n     equal 6
+variable        delta equal 1.0e-3
+
+lattice         fcc 3.615
+region          box prism 0 ${n} 0 ${n} 0 ${n} 0.0 0.0 0.0
+create_box      1 box
+create_atoms    1 box
+mass            1 63.546
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+thermo          50
+thermo_style    custom step pe lx ly lz pxx pyy pzz pyz pxz pxy
+
+# 1. Estado de referencia a pressao nula (0 K)
+fix             relax all box/relax iso 0.0 vmax 0.001
+min_style       cg
+minimize        0.0 1.0e-12 10000 100000
+unfix           relax
+run             0
+
+variable        a0    equal $(lx/v_n)
+variable        Nat0  equal $(atoms)
+variable        Eref0 equal $(pe)
+variable        Ecoh  equal $(pe/atoms)
+
+print           "==================================================="
+print           "a0   = $(v_a0:%.6f) Angstrom  (ref: 3.61493 A)"
+print           "Ecoh = $(v_Ecoh:%.6f) eV/atom (ref: -3.5400 eV)"
+print           "==================================================="
+
+print           "col_I,C1I,C2I,C3I,C4I,C5I,C6I" file cu_Cij_0K.csv screen no
+write_restart   ref_Cu_0K.restart
+
+# 2. Calculo da matriz elastica 6x6 em notacao de Voigt (4=yz, 5=xz, 6=xy)
+variable        I loop 6
+label           loopI
+
+  variable      k loop 2
+  label         loopK
+    clear
+    read_restart    ref_Cu_0K.restart
+    pair_style      eam/alloy
+    pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+    neighbor        2.0 bin
+    neigh_modify    every 1 delay 0 check yes
+    thermo_style    custom step pe lx ly lz pxx pyy pzz pyz pxz pxy
+
+    variable        e equal (2*$k-3)*${delta}
+    if "$I == 1" then "change_box all x scale $(1+v_e) remap"
+    if "$I == 2" then "change_box all y scale $(1+v_e) remap"
+    if "$I == 3" then "change_box all z scale $(1+v_e) remap"
+    if "$I == 4" then "change_box all yz delta $(v_e*lz) remap"
+    if "$I == 5" then "change_box all xz delta $(v_e*lz) remap"
+    if "$I == 6" then "change_box all xy delta $(v_e*ly) remap"
+
+    min_style       cg
+    minimize        0.0 1.0e-12 10000 100000
+    run             0
+
+    variable        s1_$k equal $(-pxx/1.0e4)
+    variable        s2_$k equal $(-pyy/1.0e4)
+    variable        s3_$k equal $(-pzz/1.0e4)
+    variable        s4_$k equal $(-pyz/1.0e4)
+    variable        s5_$k equal $(-pxz/1.0e4)
+    variable        s6_$k equal $(-pxy/1.0e4)
+  next          k
+  jump          SELF loopK
+
+  variable      c1 equal (v_s1_2-v_s1_1)/(2*v_delta)
+  variable      c2 equal (v_s2_2-v_s2_1)/(2*v_delta)
+  variable      c3 equal (v_s3_2-v_s3_1)/(2*v_delta)
+  variable      c4 equal (v_s4_2-v_s4_1)/(2*v_delta)
+  variable      c5 equal (v_s5_2-v_s5_1)/(2*v_delta)
+  variable      c6 equal (v_s6_2-v_s6_1)/(2*v_delta)
+
+  print         "C(1..6,$I) = $(v_c1:%7.2f) $(v_c2:%7.2f) $(v_c3:%7.2f) $(v_c4:%7.2f) $(v_c5:%7.2f) $(v_c6:%7.2f) GPa"
+  print         "$I,${c1},${c2},${c3},${c4},${c5},${c6}" append cu_Cij_0K.csv screen no
+next            I
+jump            SELF loopI
+
+# 3. Verificacao da energia de formacao de lacuna (Ev^f = 1.27 eV)
+clear
+read_restart    ref_Cu_0K.restart
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+thermo_style    custom step pe lx ly lz press
+
+group           delatom id 1
+delete_atoms    group delatom
+min_style       cg
+minimize        0.0 1.0e-12 10000 100000
+run             0
+
+variable        Edef equal $(pe)
+variable        Evf  equal v_Edef-((v_Nat0-1)/v_Nat0)*v_Eref0
+print           "==================================================="
+print           "Energia de formacao de lacuna Ev^f = $(v_Evf:%.4f) eV (ref: 1.27 eV)"
+print           "==================================================="
