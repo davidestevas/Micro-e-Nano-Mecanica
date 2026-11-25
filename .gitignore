@@ -1,0 +1,28 @@
+# macOS / Windows / Python
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+.venv/
+
+# Binarios e temporarios pesados do Abaqus
+*.odb
+*.sim
+*.stt
+*.mdl
+*.prt
+*.com
+*.cid
+*.abq
+*.pac
+*.sel
+*.lck
+*.res
+*.023
+*.msg
+*.dat
+*.log
+*.rpy*
+*.rec
+*.jnl
+*.zip
