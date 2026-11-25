@@ -1,0 +1,275 @@
+LAMMPS (23 Jun 2022 - Update 1)
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       data.bar_L${Lnm}nm_0K_eq
+read_data       data.bar_L5nm_0K_eq
+Reading data file ...
+  orthogonal box = (0 0 -40.02089) to (11.431397 14.4597 39.765701)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1120 atoms
+  reading velocities ...
+  1120 velocities
+  read_data CPU = 0.007 seconds
+
+variable        s300 equal 3.631868/3.614925
+change_box      all x scale ${s300} y scale ${s300} z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale ${s300} z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale 1.00468695754407 z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale 1.00468695754407 z scale 1.00468695754407 remap
+Changing box ...
+  orthogonal box = (-0.026789235 0 -40.025845) to (11.458186 14.4597 39.770656)
+  orthogonal box = (-0.026789235 -0.033886 -40.033824) to (11.458186 14.493586 39.778635)
+  orthogonal box = (-0.026789235 -0.033886 -40.228882) to (11.458186 14.493586 39.973693)
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+variable        zmob   equal ${Lnm}*5.0*v_s300
+variable        zmob   equal 5*5.0*v_s300
+region          r_bot  block INF INF INF INF INF -${zmob} units box
+region          r_bot  block INF INF INF INF INF -25.1171739386017 units box
+region          r_top  block INF INF INF INF  ${zmob} INF units box
+region          r_top  block INF INF INF INF  25.1171739386017 INF units box
+
+group           bot_fix region r_bot
+216 atoms in group bot_fix
+group           top_fix region r_top
+208 atoms in group top_fix
+group           grips   union bot_fix top_fix
+424 atoms in group grips
+group           mobile  subtract all grips
+696 atoms in group mobile
+
+# 1. Equilibracao a 300 K (20 ps) com pistao amortecido para garantir Tn(0) ~ 0
+reset_timestep  0
+timestep        0.001
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 0.0
+velocity        mobile  create 600.0 ${seed} mom yes rot yes dist gaussian
+velocity        mobile  create 600.0 492845 mom yes rot yes dist gaussian
+
+fix             eq_mob  mobile  nvt temp 300.0 300.0 0.1
+fix             eq_bot  bot_fix setforce 0.0 0.0 0.0
+fix             eq_damp top_fix viscous 0.5
+fix             eq_topz top_fix aveforce NULL NULL 0.0
+fix             eq_topx top_fix setforce 0.0 0.0 NULL
+fix             eq_topn top_fix nve
+
+thermo          5000
+thermo_style    custom step temp pe lz
+run             20000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 4 4 22
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 3.555 | 3.555 | 3.555 Mbytes
+   Step          Temp          PotEng           Lz      
+         0   372.65416     -3922.1035      80.20257     
+      5000   188.31041     -3894.5171      80.20257     
+     10000   198.46033     -3895.578       80.20257     
+     15000   183.84345     -3893.772       80.20257     
+     20000   197.7866      -3895.8211      80.20257     
+Loop time of 43.6573 on 1 procs for 20000 steps with 1120 atoms
+
+Performance: 39.581 ns/day, 0.606 hours/ns, 458.113 timesteps/s
+99.4% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 42.685     | 42.685     | 42.685     |   0.0 | 97.77
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.40758    | 0.40758    | 0.40758    |   0.0 |  0.93
+Output  | 4.828e-05  | 4.828e-05  | 4.828e-05  |   0.0 |  0.00
+Modify  | 0.44663    | 0.44663    | 0.44663    |   0.0 |  1.02
+Other   |            | 0.118      |            |       |  0.27
+
+Nlocal:           1120 ave        1120 max        1120 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           4471 ave        4471 max        4471 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          75560 ave       75560 max       75560 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 75560
+Ave neighs/atom = 67.464286
+Neighbor list builds = 0
+Dangerous builds = 0
+
+unfix           eq_mob
+unfix           eq_bot
+unfix           eq_damp
+unfix           eq_topz
+unfix           eq_topx
+unfix           eq_topn
+
+# 2. Tracao controlada em deslocamento a 300 K
+reset_timestep  0
+timestep        0.001
+
+variable        A_area equal $(lx*ly)
+variable        A_area equal 166.8476533302251994
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_bmax equal -25.281433329108153885
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        z_tmin equal 25.584587199974510696
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        Lmob0  equal 50.866020529082703661
+variable        Nmob   equal $(count(mobile))
+variable        Nmob   equal 696
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 ${vel}
+velocity        top_fix set 0.0 0.0 0.01
+velocity        mobile  ramp vz 0.0 ${vel} z ${z_bmax} ${z_tmin} sum yes units box
+velocity        mobile  ramp vz 0.0 0.01 z ${z_bmax} ${z_tmin} sum yes units box
+velocity        mobile  ramp vz 0.0 0.01 z -25.2814333291082 ${z_tmin} sum yes units box
+velocity        mobile  ramp vz 0.0 0.01 z -25.2814333291082 25.5845871999745 sum yes units box
+
+compute         T_xy   mobile temp/partial 1 1 0
+compute         T_all  mobile temp
+compute         ftop   top_fix reduce sum fx fy fz
+compute         fbot   bot_fix reduce sum fx fy fz
+
+fix             1 mobile nvt temp 300.0 300.0 0.1
+fix_modify      1 temp T_xy
+WARNING: Temperature for fix modify is not for group all (src/fix_nh.cpp:1423)
+fix             2 top_fix move linear 0.0 0.0 ${vel} units box
+fix             2 top_fix move linear 0.0 0.0 0.01 units box
+
+variable        u_grip equal step*dt*${vel}
+variable        u_grip equal step*dt*0.01
+variable        tn_top equal -c_ftop[3]/v_A_area*160.2176634
+variable        tn_bot equal  c_fbot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+
+print           "# Cu Sigma5(310) 300 K bar | L_nom=${Lnm} nm | tag=${tag} | vel=${vel} A/ps | seed=${seed} | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file bar300K_${tag}_meta.txt screen no
+print           "# Cu Sigma5(310) 300 K bar | L_nom=${Lnm} nm | tag=${tag} | vel=${vel} A/ps | seed=${seed} | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file bar300K_L5nm_v1ms_meta.txt screen no
+
+fix             out all ave/time 1 ${ave_n} ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_${tag}.dat
+fix             out all ave/time 1 500 ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_${tag}.dat
+fix             out all ave/time 1 500 500 v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_${tag}.dat
+fix             out all ave/time 1 500 500 v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_L5nm_v1ms.dat
+
+variable        dfreq equal floor(${nsteps}/25)
+variable        dfreq equal floor(1200000/25)
+dump            1 all custom ${dfreq} dump.bar300K_${tag}.lammpstrj id type x y z
+dump            1 all custom 48000 dump.bar300K_${tag}.lammpstrj id type x y z
+dump            1 all custom 48000 dump.bar300K_L5nm_v1ms.lammpstrj id type x y z
+dump_modify     1 sort id
+
+thermo          20000
+thermo_style    custom step v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy pe
+
+run             ${nsteps}
+run             1200000
+Per MPI rank memory allocation (min/avg/max) = 5.278 | 5.278 | 5.278 Mbytes
+   Step        v_u_grip       v_tn_avg       v_tn_top       v_tn_bot        c_T_xy         PotEng    
+         0   0              0.66572734     0.4088498      0.92260488     321.66452     -3895.8211    
+     20000   0.2           -0.34533739    -1.2220693      0.53139452     291.37678     -3894.5805    
+     40000   0.4            0.46474235    -1.4048722      2.3343569      287.03169     -3894.2892    
+     60000   0.6            2.0233457      2.9941045      1.0525869      294.19546     -3894.0164    
+     80000   0.8            1.914156       1.3851526      2.4431594      321.59012     -3892.3683    
+    100000   1              3.7129829      1.8872373      5.5387285      288.99212     -3892.0408    
+    120000   1.2            4.2513008      5.3613845      3.1412171      294.16883     -3889.855     
+    140000   1.4            5.2130989      5.0075636      5.4186341      318.44224     -3890.1347    
+    160000   1.6            4.5794059      5.2855789      3.873233       323.62148     -3888.2257    
+    180000   1.8            6.8689486      8.4550369      5.2828604      317.01026     -3887.1585    
+    200000   2              4.2998578      4.8733044      3.7264112      288.84501     -3882.8666    
+    220000   2.2            5.6911074      6.4837398      4.898475       332.35546     -3883.023     
+    240000   2.4            7.2296086      6.4718466      7.9873705      289.54341     -3881.5558    
+    260000   2.6            7.5507718      8.8975901      6.2039534      302.60143     -3879.7085    
+    280000   2.8            8.3287462      7.6816031      8.9758893      309.02474     -3877.0302    
+    300000   3              10.06624       10.680748      9.4517313      295.96393     -3874.438     
+    320000   3.2            9.1514357      9.7848471      8.5180244      281.97046     -3870.8088    
+    340000   3.4            9.3267028      10.414648      8.2387577      307.95171     -3869.3806    
+    360000   3.6            10.259848      9.6285824      10.891114      298.75925     -3867.0867    
+    380000   3.8            10.728597      8.9923464      12.464847      292.83287     -3865.0595    
+    400000   4              9.2793422      8.5790579      9.9796265      291.13262     -3860.3997    
+    420000   4.2            10.037437      9.8941405      10.180733      302.00126     -3860.1721    
+    440000   4.4            12.207072      12.125688      12.288455      295.03682     -3857.3033    
+    460000   4.6            12.149707      12.276733      12.022682      272.53351     -3852.7253    
+    480000   4.8            12.163863      11.326562      13.001163      306.60046     -3848.2973    
+    500000   5              9.7277987      9.5834102      9.8721872      297.66224     -3845.2428    
+    520000   5.2            11.493609      11.157888      11.829329      310.9667      -3843.9203    
+    540000   5.4            11.949855      11.656754      12.242956      313.9324      -3840.3704    
+    560000   5.6            11.951525      11.6961        12.206949      320.42865     -3837.211     
+    580000   5.8            12.325499      12.212139      12.438859      292.93892     -3834.1458    
+    600000   6              13.569335      12.438941      14.699729      296.99437     -3831.5306    
+    620000   6.2            13.688927      13.761419      13.616435      309.53046     -3827.8915    
+    640000   6.4            13.905668      14.378232      13.433103      307.57295     -3824.4005    
+    660000   6.6            15.140528      15.447673      14.833383      291.83392     -3821.4787    
+    680000   6.8            10.100566      7.6275108      12.573621      308.29184     -3854.9478    
+    700000   7             -8.8370772     -10.958801     -6.7153535      297.66624     -3865.4655    
+    720000   7.2            3.0298126      1.5151816      4.5444437      291.34456     -3868.7111    
+    740000   7.4           -0.059737917    6.9293681     -7.0488439      279.22485     -3866.5519    
+    760000   7.6           -0.31533663    -5.5712062      4.940533       314.14559     -3869.3321    
+    780000   7.8           -2.461527      -1.8866102     -3.0364438      300.33445     -3871.2114    
+    800000   8              4.7911851      7.46468        2.1176902      297.9784      -3867.5654    
+    820000   8.2           -3.6516951     -4.0525292     -3.250861       282.69116     -3870.0401    
+    840000   8.4            0.054642178   -2.5815406      2.6908249      305.78314     -3869.6785    
+    860000   8.6            0.30242619     3.9063611     -3.3015087      298.57167     -3869.6012    
+    880000   8.8            0.56554915    -2.3105951      3.4416934      292.76773     -3869.6364    
+    900000   9             -0.836967      -1.3769312     -0.29700285     284.60039     -3870.6292    
+    920000   9.2            1.7422873      2.4291567      1.055418       331.41756     -3870.697     
+    940000   9.4            0.98576234     0.48371856     1.4878061      316.64532     -3870.5818    
+    960000   9.6            0.69254457     0.55945267     0.82563646     301.96211     -3870.5907    
+    980000   9.8            1.5751049      1.5738695      1.5763403      297.96305     -3870.3361    
+   1000000   10            -0.38145586    -1.482658       0.71974623     306.31406     -3870.5021    
+   1020000   10.2          -1.9556406     -2.9074648     -1.0038163      291.31289     -3869.0353    
+   1040000   10.4          -0.58650059     1.7392639     -2.9122651      319.98824     -3868.837     
+   1060000   10.6           0.65668586    -0.025343806    1.3387155      295.57149     -3869.6539    
+   1080000   10.8          -1.6338411     -1.300653      -1.9670291      277.02658     -3870.6438    
+   1100000   11             0.15032103     0.47661609    -0.17597403     317.28575     -3870.6394    
+   1120000   11.2           0.18391607    -1.944533       2.3123651      282.57452     -3869.9504    
+   1140000   11.4          -1.0256529     -0.60580228    -1.4455035      303.7463      -3870.88      
+   1160000   11.6           2.3890422      2.8048723      1.9732121      303.30418     -3870.3936    
+   1180000   11.8           0.12529104     0.10115436     0.14942773     292.75147     -3871.4666    
+   1200000   12            -0.023271902    0.37821427    -0.42475807     303.98385     -3871.4473    
+Loop time of 2657.38 on 1 procs for 1200000 steps with 1120 atoms
+
+Performance: 39.016 ns/day, 0.615 hours/ns, 451.573 timesteps/s
+99.4% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 2564.4     | 2564.4     | 2564.4     |   0.0 | 96.50
+Neigh   | 2.3529     | 2.3529     | 2.3529     |   0.0 |  0.09
+Comm    | 23.713     | 23.713     | 23.713     |   0.0 |  0.89
+Output  | 0.028551   | 0.028551   | 0.028551   |   0.0 |  0.00
+Modify  | 59.65      | 59.65      | 59.65      |   0.0 |  2.24
+Other   |            | 7.186      |            |       |  0.27
+
+Nlocal:           1120 ave        1120 max        1120 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           4425 ave        4425 max        4425 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          73270 ave       73270 max       73270 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 73270
+Ave neighs/atom = 65.419643
+Neighbor list builds = 986
+Dangerous builds = 0
+
+print           "DONE_BAR_300K [${tag}]: Lmob0 = $(v_Lmob0:%.4f) A | u_end = $(v_u_grip:%.2f) A | tn_end = $(v_tn_avg:%.4f) GPa"
+DONE_BAR_300K [L5nm_v1ms]: Lmob0 = 50.8660 A | u_end = 12.00 A | tn_end = -0.0233 GPa
+Total wall time: 0:45:01

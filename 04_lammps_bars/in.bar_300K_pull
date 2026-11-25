@@ -1,0 +1,93 @@
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       data.bar_L${Lnm}nm_0K_eq
+
+variable        s300 equal 3.631868/3.614925
+change_box      all x scale ${s300} y scale ${s300} z scale ${s300} remap
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+variable        zmob   equal ${Lnm}*5.0*v_s300
+region          r_bot  block INF INF INF INF INF -${zmob} units box
+region          r_top  block INF INF INF INF  ${zmob} INF units box
+
+group           bot_fix region r_bot
+group           top_fix region r_top
+group           grips   union bot_fix top_fix
+group           mobile  subtract all grips
+
+# 1. Equilibracao a 300 K (20 ps) com pistao amortecido para garantir Tn(0) ~ 0
+reset_timestep  0
+timestep        0.001
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 0.0
+velocity        mobile  create 600.0 ${seed} mom yes rot yes dist gaussian
+
+fix             eq_mob  mobile  nvt temp 300.0 300.0 0.1
+fix             eq_bot  bot_fix setforce 0.0 0.0 0.0
+fix             eq_damp top_fix viscous 0.5
+fix             eq_topz top_fix aveforce NULL NULL 0.0
+fix             eq_topx top_fix setforce 0.0 0.0 NULL
+fix             eq_topn top_fix nve
+
+thermo          5000
+thermo_style    custom step temp pe lz
+run             20000
+
+unfix           eq_mob
+unfix           eq_bot
+unfix           eq_damp
+unfix           eq_topz
+unfix           eq_topx
+unfix           eq_topn
+
+# 2. Tracao controlada em deslocamento a 300 K
+reset_timestep  0
+timestep        0.001
+
+variable        A_area equal $(lx*ly)
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        Nmob   equal $(count(mobile))
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 ${vel}
+velocity        mobile  ramp vz 0.0 ${vel} z ${z_bmax} ${z_tmin} sum yes units box
+
+compute         T_xy   mobile temp/partial 1 1 0
+compute         T_all  mobile temp
+compute         ftop   top_fix reduce sum fx fy fz
+compute         fbot   bot_fix reduce sum fx fy fz
+
+fix             1 mobile nvt temp 300.0 300.0 0.1
+fix_modify      1 temp T_xy
+fix             2 top_fix move linear 0.0 0.0 ${vel} units box
+
+variable        u_grip equal step*dt*${vel}
+variable        tn_top equal -c_ftop[3]/v_A_area*160.2176634
+variable        tn_bot equal  c_fbot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+
+print           "# Cu Sigma5(310) 300 K bar | L_nom=${Lnm} nm | tag=${tag} | vel=${vel} A/ps | seed=${seed} | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file bar300K_${tag}_meta.txt screen no
+
+fix             out all ave/time 1 ${ave_n} ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_${tag}.dat
+
+variable        dfreq equal floor(${nsteps}/25)
+dump            1 all custom ${dfreq} dump.bar300K_${tag}.lammpstrj id type x y z
+dump_modify     1 sort id
+
+thermo          20000
+thermo_style    custom step v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy pe
+
+run             ${nsteps}
+
+print           "DONE_BAR_300K [${tag}]: Lmob0 = $(v_Lmob0:%.4f) A | u_end = $(v_u_grip:%.2f) A | tn_end = $(v_tn_avg:%.4f) GPa"

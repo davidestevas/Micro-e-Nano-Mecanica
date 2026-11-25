@@ -1,0 +1,90 @@
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       data.bar_L${Lnm}nm_init
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+group           lower type 1
+group           upper type 2
+
+variable        dx equal 2.0*5.715698285342089/10.0
+variable        rc equal 0.7*2.556138050115838
+displace_atoms  upper move ${dx} 0.0 0.0 units box
+delete_atoms    overlap ${rc} upper lower
+
+variable        zmob equal ${Lnm}*5.0
+region          r_bot block INF INF INF INF INF -${zmob} units box
+region          r_top block INF INF INF INF  ${zmob} INF units box
+
+group           bot_fix region r_bot
+group           top_fix region r_top
+group           grips   union bot_fix top_fix
+group           mobile  subtract all grips
+
+# 1. Relaxacao inicial da fronteira (Fx=Fy=Fz=0 no bloco superior)
+fix             f_bot  bot_fix setforce 0.0 0.0 0.0
+fix             f_top0 top_fix aveforce 0.0 0.0 0.0
+
+thermo          500
+thermo_style    custom step pe fmax
+
+min_style       cg
+minimize        0.0 1.0e-11 10000 100000
+run             0
+
+unfix           f_top0
+write_data      data.bar_L${Lnm}nm_0K_eq
+
+# 2. Preparacao para tracao controlada em deslocamento
+fix             f_top top_fix setforce 0.0 0.0 0.0
+run             0
+
+variable        A_area equal $(lx*ly)
+variable        E0     equal $(pe)
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        Ntot   equal $(atoms)
+
+print           "# Cu Sigma5(310) 0 K bar | L_nom=${Lnm} nm | Lmob0=${Lmob0} A | Area=${A_area} A^2 | N=${Ntot} | du=${du} A" file bar0K_L${Lnm}nm.dat screen no
+print           "# istep u_grip_A tn_avg_GPa tn_top_GPa tn_bot_GPa dE_Jm2" append bar0K_L${Lnm}nm.dat screen no
+
+variable        tn_top equal -f_f_top[3]/v_A_area*160.2176634
+variable        tn_bot equal  f_f_bot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+variable        dE_Jm2 equal  (pe-v_E0)/v_A_area*16.02176634
+
+print           "0 0.000000 ${tn_avg} ${tn_top} ${tn_bot} ${dE_Jm2}" append bar0K_L${Lnm}nm.dat screen no
+write_dump      all custom dump.bar0K_L${Lnm}nm.lammpstrj id type x y z modify sort id
+
+# 3. Ciclo de tracao com pre-deslocamento afim + minimizacao CG
+variable        istep loop ${nsteps}
+label           loopBar
+
+  variable        z0_cur equal $(bound(bot_fix,zmax))
+  variable        z1_cur equal $(bound(top_fix,zmin))
+  variable        dz_aff atom ${du}*(z-v_z0_cur)/(v_z1_cur-v_z0_cur)
+  displace_atoms  mobile  move 0.0 0.0 v_dz_aff units box
+  displace_atoms  top_fix move 0.0 0.0 ${du} units box
+
+  min_style       cg
+  minimize        0.0 1.0e-9 5000 50000
+  run             0
+
+  variable        u_grip equal ${istep}*${du}
+  print           "${istep} ${u_grip} ${tn_avg} ${tn_top} ${tn_bot} ${dE_Jm2}" append bar0K_L${Lnm}nm.dat screen no
+
+  variable        dmod equal ${istep}%${dskip}
+  if "${dmod} == 0" then "write_dump all custom dump.bar0K_L${Lnm}nm.lammpstrj id type x y z modify append yes sort id"
+
+next            istep
+jump            SELF loopBar
+
+print           "DONE_BAR_0K [L=${Lnm}nm]: Lmob0 = $(v_Lmob0:%.4f) A | u_end = $(v_u_grip:%.2f) A | dE_end = $(v_dE_Jm2:%.4f) J/m^2 | tn_end = $(v_tn_avg:%.5f) GPa"

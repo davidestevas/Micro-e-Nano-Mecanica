@@ -1,0 +1,77 @@
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       data.bar300K_L${Lnm}nm_cont_init
+include         cont_300K_L${Lnm}nm.inc
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+region          r_bot  block INF INF INF INF INF ${z_bot} units box
+region          r_top  block INF INF INF INF ${z_top} INF units box
+
+group           bot_fix region r_bot
+group           top_fix region r_top
+group           grips   union bot_fix top_fix
+group           mobile  subtract all grips
+
+# 1. Breve re-termalizacao a 300 K (3 ps) com garras congeladas em u0
+reset_timestep  0
+timestep        0.001
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 0.0
+velocity        mobile  create 300.0 492845 mom yes rot yes dist gaussian
+
+fix             eq_mob mobile  nvt temp 300.0 300.0 0.1
+fix             eq_bot bot_fix setforce 0.0 0.0 0.0
+fix             eq_top top_fix setforce 0.0 0.0 0.0
+run             3000
+
+unfix           eq_mob
+unfix           eq_bot
+unfix           eq_top
+
+# 2. Retomar tracao a 10 m/s (0.10 A/ps)
+reset_timestep  0
+timestep        0.001
+
+variable        A_area equal $(lx*ly)
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_tmin equal $(bound(top_fix,zmin))
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 0.10
+velocity        mobile  ramp vz 0.0 0.10 z ${z_bmax} ${z_tmin} sum yes units box
+
+compute         T_xy   mobile temp/partial 1 1 0
+compute         T_all  mobile temp
+compute         ftop   top_fix reduce sum fx fy fz
+compute         fbot   bot_fix reduce sum fx fy fz
+
+fix             1 mobile nvt temp 300.0 300.0 0.1
+fix_modify      1 temp T_xy
+fix             2 top_fix move linear 0.0 0.0 0.10 units box
+
+variable        u_grip equal ${u0}+step*dt*0.10
+variable        tn_top equal -c_ftop[3]/v_A_area*160.2176634
+variable        tn_bot equal  c_fbot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+
+fix             out all ave/time 1 ${ave_n} ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_L${Lnm}nm_v10ms_cont.dat
+
+variable        dfreq equal floor(${nsteps}/15)
+dump            1 all custom ${dfreq} dump.bar300K_L${Lnm}nm_v10ms_cont.lammpstrj id type x y z
+dump_modify     1 sort id
+
+thermo          20000
+thermo_style    custom step v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy pe
+
+run             ${nsteps}
+
+print           "DONE_CONT_300K [L=${Lnm}nm]: u0 = ${u0} A -> u_end = $(v_u_grip:%.2f) A | tn_end = $(v_tn_avg:%.4f) GPa"

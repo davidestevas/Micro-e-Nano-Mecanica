@@ -1,0 +1,221 @@
+LAMMPS (23 Jun 2022 - Update 1)
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       data.bar_L${Lnm}nm_0K_eq
+read_data       data.bar_L5nm_0K_eq
+Reading data file ...
+  orthogonal box = (0 0 -40.02089) to (11.431397 14.4597 39.765701)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1120 atoms
+  reading velocities ...
+  1120 velocities
+  read_data CPU = 0.009 seconds
+
+variable        s300 equal 3.631868/3.614925
+change_box      all x scale ${s300} y scale ${s300} z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale ${s300} z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale 1.00468695754407 z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale 1.00468695754407 z scale 1.00468695754407 remap
+Changing box ...
+  orthogonal box = (-0.026789235 0 -40.025845) to (11.458186 14.4597 39.770656)
+  orthogonal box = (-0.026789235 -0.033886 -40.033824) to (11.458186 14.493586 39.778635)
+  orthogonal box = (-0.026789235 -0.033886 -40.228882) to (11.458186 14.493586 39.973693)
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+variable        zmob   equal ${Lnm}*5.0*v_s300
+variable        zmob   equal 5*5.0*v_s300
+region          r_bot  block INF INF INF INF INF -${zmob} units box
+region          r_bot  block INF INF INF INF INF -25.1171739386017 units box
+region          r_top  block INF INF INF INF  ${zmob} INF units box
+region          r_top  block INF INF INF INF  25.1171739386017 INF units box
+
+group           bot_fix region r_bot
+216 atoms in group bot_fix
+group           top_fix region r_top
+208 atoms in group top_fix
+group           grips   union bot_fix top_fix
+424 atoms in group grips
+group           mobile  subtract all grips
+696 atoms in group mobile
+
+# 1. Equilibracao a 300 K (20 ps) com pistao amortecido para garantir Tn(0) ~ 0
+reset_timestep  0
+timestep        0.001
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 0.0
+velocity        mobile  create 600.0 ${seed} mom yes rot yes dist gaussian
+velocity        mobile  create 600.0 492845 mom yes rot yes dist gaussian
+
+fix             eq_mob  mobile  nvt temp 300.0 300.0 0.1
+fix             eq_bot  bot_fix setforce 0.0 0.0 0.0
+fix             eq_damp top_fix viscous 0.5
+fix             eq_topz top_fix aveforce NULL NULL 0.0
+fix             eq_topx top_fix setforce 0.0 0.0 NULL
+fix             eq_topn top_fix nve
+
+thermo          5000
+thermo_style    custom step temp pe lz
+run             20000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 4 4 22
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 3.555 | 3.555 | 3.555 Mbytes
+   Step          Temp          PotEng           Lz      
+         0   372.65416     -3922.1035      80.20257     
+      5000   188.31041     -3894.5171      80.20257     
+     10000   198.46033     -3895.578       80.20257     
+     15000   183.84345     -3893.772       80.20257     
+     20000   197.7866      -3895.8211      80.20257     
+Loop time of 50.036 on 1 procs for 20000 steps with 1120 atoms
+
+Performance: 34.535 ns/day, 0.695 hours/ns, 399.713 timesteps/s
+96.8% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 48.897     | 48.897     | 48.897     |   0.0 | 97.72
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.46992    | 0.46992    | 0.46992    |   0.0 |  0.94
+Output  | 5.0192e-05 | 5.0192e-05 | 5.0192e-05 |   0.0 |  0.00
+Modify  | 0.52789    | 0.52789    | 0.52789    |   0.0 |  1.06
+Other   |            | 0.1407     |            |       |  0.28
+
+Nlocal:           1120 ave        1120 max        1120 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           4471 ave        4471 max        4471 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          75560 ave       75560 max       75560 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 75560
+Ave neighs/atom = 67.464286
+Neighbor list builds = 0
+Dangerous builds = 0
+
+unfix           eq_mob
+unfix           eq_bot
+unfix           eq_damp
+unfix           eq_topz
+unfix           eq_topx
+unfix           eq_topn
+
+# 2. Tracao controlada em deslocamento a 300 K
+reset_timestep  0
+timestep        0.001
+
+variable        A_area equal $(lx*ly)
+variable        A_area equal 166.8476533302251994
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_bmax equal -25.281433329108153885
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        z_tmin equal 25.584587199974510696
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        Lmob0  equal 50.866020529082703661
+variable        Nmob   equal $(count(mobile))
+variable        Nmob   equal 696
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 ${vel}
+velocity        top_fix set 0.0 0.0 0.10
+velocity        mobile  ramp vz 0.0 ${vel} z ${z_bmax} ${z_tmin} sum yes units box
+velocity        mobile  ramp vz 0.0 0.10 z ${z_bmax} ${z_tmin} sum yes units box
+velocity        mobile  ramp vz 0.0 0.10 z -25.2814333291082 ${z_tmin} sum yes units box
+velocity        mobile  ramp vz 0.0 0.10 z -25.2814333291082 25.5845871999745 sum yes units box
+
+compute         T_xy   mobile temp/partial 1 1 0
+compute         T_all  mobile temp
+compute         ftop   top_fix reduce sum fx fy fz
+compute         fbot   bot_fix reduce sum fx fy fz
+
+fix             1 mobile nvt temp 300.0 300.0 0.1
+fix_modify      1 temp T_xy
+WARNING: Temperature for fix modify is not for group all (src/fix_nh.cpp:1423)
+fix             2 top_fix move linear 0.0 0.0 ${vel} units box
+fix             2 top_fix move linear 0.0 0.0 0.10 units box
+
+variable        u_grip equal step*dt*${vel}
+variable        u_grip equal step*dt*0.10
+variable        tn_top equal -c_ftop[3]/v_A_area*160.2176634
+variable        tn_bot equal  c_fbot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+
+print           "# Cu Sigma5(310) 300 K bar | L_nom=${Lnm} nm | tag=${tag} | vel=${vel} A/ps | seed=${seed} | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file bar300K_${tag}_meta.txt screen no
+print           "# Cu Sigma5(310) 300 K bar | L_nom=${Lnm} nm | tag=${tag} | vel=${vel} A/ps | seed=${seed} | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file bar300K_L5nm_v10ms_meta.txt screen no
+
+fix             out all ave/time 1 ${ave_n} ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_${tag}.dat
+fix             out all ave/time 1 50 ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_${tag}.dat
+fix             out all ave/time 1 50 50 v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_${tag}.dat
+fix             out all ave/time 1 50 50 v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all file bar300K_L5nm_v10ms.dat
+
+variable        dfreq equal floor(${nsteps}/25)
+variable        dfreq equal floor(120000/25)
+dump            1 all custom ${dfreq} dump.bar300K_${tag}.lammpstrj id type x y z
+dump            1 all custom 4800 dump.bar300K_${tag}.lammpstrj id type x y z
+dump            1 all custom 4800 dump.bar300K_L5nm_v10ms.lammpstrj id type x y z
+dump_modify     1 sort id
+
+thermo          20000
+thermo_style    custom step v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy pe
+
+run             ${nsteps}
+run             120000
+Per MPI rank memory allocation (min/avg/max) = 5.278 | 5.278 | 5.278 Mbytes
+   Step        v_u_grip       v_tn_avg       v_tn_top       v_tn_bot        c_T_xy         PotEng    
+         0   0              0.66572734     0.4088498      0.92260488     321.66452     -3895.8211    
+     20000   2              5.403446       3.6135462      7.1933459      308.48924     -3884.8076    
+     40000   4              11.522684      11.391933      11.653436      295.70907     -3863.7413    
+     60000   6              12.571495      12.833454      12.309536      317.30865     -3831.1066    
+     80000   8              11.712016      10.292669      13.131364      352.46995     -3833.3611    
+    100000   10             2.1664951      8.4527393     -4.119749       320.84671     -3867.048     
+    120000   12             2.8941468      6.3993884     -0.61109473     292.15386     -3863.9372    
+Loop time of 273.024 on 1 procs for 120000 steps with 1120 atoms
+
+Performance: 37.975 ns/day, 0.632 hours/ns, 439.522 timesteps/s
+99.4% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 263.01     | 263.01     | 263.01     |   0.0 | 96.33
+Neigh   | 0.63678    | 0.63678    | 0.63678    |   0.0 |  0.23
+Comm    | 2.4189     | 2.4189     | 2.4189     |   0.0 |  0.89
+Output  | 0.028401   | 0.028401   | 0.028401   |   0.0 |  0.01
+Modify  | 6.189      | 6.189      | 6.189      |   0.0 |  2.27
+Other   |            | 0.7381     |            |       |  0.27
+
+Nlocal:           1120 ave        1120 max        1120 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           4413 ave        4413 max        4413 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          73243 ave       73243 max       73243 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 73243
+Ave neighs/atom = 65.395536
+Neighbor list builds = 263
+Dangerous builds = 0
+
+print           "DONE_BAR_300K [${tag}]: Lmob0 = $(v_Lmob0:%.4f) A | u_end = $(v_u_grip:%.2f) A | tn_end = $(v_tn_avg:%.4f) GPa"
+DONE_BAR_300K [L5nm_v10ms]: Lmob0 = 50.8660 A | u_end = 12.00 A | tn_end = 2.8941 GPa
+Total wall time: 0:05:23

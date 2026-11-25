@@ -1,0 +1,70 @@
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       data.bar_L${Lnm}nm_cont_init
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# Selecionar exatamente as mesmas garras rigidas (base fixa em -zmob; topo deslocado de +u0)
+variable        zmob    equal ${Lnm}*5.0
+variable        z_bot   equal -${zmob}
+variable        z_top   equal ${zmob}+${u0}-0.05
+region          r_bot   block INF INF INF INF INF ${z_bot} units box
+region          r_top   block INF INF INF INF ${z_top} INF units box
+
+group           bot_fix region r_bot
+group           top_fix region r_top
+group           grips   union bot_fix top_fix
+group           mobile  subtract all grips
+
+fix             f_bot   bot_fix setforce 0.0 0.0 0.0
+fix             f_top   top_fix setforce 0.0 0.0 0.0
+
+thermo          500
+thermo_style    custom step pe f_f_top[3] f_f_bot[3] fmax
+
+run             0
+
+variable        A_area  equal $(lx*ly)
+variable        E_start equal $(pe)
+variable        Nbot    equal $(count(bot_fix))
+variable        Ntop    equal $(count(top_fix))
+
+variable        tn_top  equal -f_f_top[3]/v_A_area*160.2176634
+variable        tn_bot  equal  f_f_bot[3]/v_A_area*160.2176634
+variable        tn_avg  equal  0.5*(v_tn_top+v_tn_bot)
+variable        dE_Jm2  equal  ${dE0}+(pe-v_E_start)/v_A_area*16.02176634
+
+print           "START_CONT [L=${Lnm}nm]: Nbot=${Nbot}, Ntop=${Ntop} | u0=${u0} A | tn0=$(v_tn_avg:%.4f) GPa | dE0=$(v_dE_Jm2:%.4f) J/m^2"
+print           "# Continuation L=${Lnm} nm from u0=${u0} A" file bar0K_L${Lnm}nm_cont.dat screen no
+print           "# istep u_grip_A tn_avg_GPa tn_top_GPa tn_bot_GPa dE_Jm2" append bar0K_L${Lnm}nm_cont.dat screen no
+
+variable        istep loop ${nsteps}
+label           loopCont
+
+  variable        z0_cur equal $(bound(bot_fix,zmax))
+  variable        z1_cur equal $(bound(top_fix,zmin))
+  variable        dz_aff atom ${du}*(z-v_z0_cur)/(v_z1_cur-v_z0_cur)
+  displace_atoms  mobile  move 0.0 0.0 v_dz_aff units box
+  displace_atoms  top_fix move 0.0 0.0 ${du} units box
+
+  min_style       cg
+  minimize        0.0 1.0e-9 5000 50000
+  run             0
+
+  variable        u_grip equal ${u0}+${istep}*${du}
+  print           "${istep} ${u_grip} ${tn_avg} ${tn_top} ${tn_bot} ${dE_Jm2}" append bar0K_L${Lnm}nm_cont.dat screen no
+
+  variable        dmod equal ${istep}%${dskip}
+  if "${dmod} == 0" then "write_dump all custom dump.bar0K_L${Lnm}nm_cont.lammpstrj id type x y z modify append yes sort id"
+
+next            istep
+jump            SELF loopCont
+
+print           "DONE_CONT [L=${Lnm}nm]: u_end = $(v_u_grip:%.2f) A | dE_end = $(v_dE_Jm2:%.4f) J/m^2 | tn_end = $(v_tn_avg:%.5f) GPa"
