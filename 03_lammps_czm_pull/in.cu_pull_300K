@@ -1,0 +1,55 @@
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_restart    restart.gb310_300K_eq_v2
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+reset_timestep  0
+timestep        0.001
+
+variable        A_area equal $(lx*ly)
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        Nmob   equal $(count(mobile))
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 ${vel}
+
+compute         T_xy   mobile temp/partial 1 1 0
+compute         T_all  mobile temp
+compute         ftop   top_fix reduce sum fx fy fz
+compute         fbot   bot_fix reduce sum fx fy fz
+
+fix             1 mobile nvt temp 300.0 300.0 0.1
+fix_modify      1 temp T_xy
+fix             2 top_fix move linear 0.0 0.0 ${vel} units box
+
+variable        u_grip equal step*dt*${vel}
+variable        tn_top equal -c_ftop[3]/v_A_area*160.2176634
+variable        tn_bot equal  c_fbot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+variable        ts_x   equal -c_ftop[1]/v_A_area*160.2176634
+variable        ts_y   equal -c_ftop[2]/v_A_area*160.2176634
+
+print           "# Cu Sigma5(310) 300 K pull | vtag=${vtag} | vel=${vel} A/ps | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file pull300K_${vtag}_meta.txt screen no
+
+fix             out all ave/time 1 ${ave_n} ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_${vtag}.dat
+
+variable        dfreq equal floor(${nsteps}/40)
+dump            1 all custom ${dfreq} dump.pull300K_${vtag}.lammpstrj id type x y z
+dump_modify     1 sort id
+
+thermo          20000
+thermo_style    custom step v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all pe
+
+run             ${nsteps}
+
+print           "DONE_300K [${vtag}]: Lmob0 = $(v_Lmob0:%.4f) A | u_end = $(v_u_grip:%.3f) A | tn_end = $(v_tn_avg:%.4f) GPa"

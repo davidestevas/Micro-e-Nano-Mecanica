@@ -1,0 +1,63 @@
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       ../02_lammps_gb_310/data.gb310_H40_eq
+
+variable        s300 equal 3.631868/3.614925
+change_box      all x scale ${s300} y scale ${s300} z scale ${s300} remap
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+variable        zc     equal $(xcm(all,z))
+variable        z_lo   equal v_zc-5.0234
+variable        z_hi   equal v_zc+5.0234
+region          r_bot  block INF INF INF INF INF ${z_lo} units box
+region          r_top  block INF INF INF INF ${z_hi} INF units box
+
+group           bot_fix region r_bot
+group           top_fix region r_top
+group           grips   union bot_fix top_fix
+group           mobile  subtract all grips
+
+reset_timestep  0
+timestep        0.001
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 0.0
+velocity        mobile  create 600.0 741852 mom yes rot yes dist gaussian
+
+fix             eq_mob  mobile  nvt temp 300.0 300.0 0.1
+fix             eq_bot  bot_fix setforce 0.0 0.0 0.0
+fix             eq_damp top_fix viscous 0.5
+fix             eq_topz top_fix aveforce NULL NULL 0.0
+fix             eq_topx top_fix setforce 0.0 0.0 NULL
+fix             eq_topn top_fix nve
+
+variable        A_area equal $(lx*ly)
+compute         T_mob  mobile temp
+compute         fbot   bot_fix reduce sum fx fy fz
+variable        tn_bot equal c_fbot[3]/v_A_area*160.2176634
+
+thermo          2000
+thermo_style    custom step c_T_mob v_tn_bot pe
+
+run             20000
+
+unfix           eq_mob
+unfix           eq_bot
+unfix           eq_damp
+unfix           eq_topz
+unfix           eq_topx
+unfix           eq_topn
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 0.0
+
+write_restart   restart.gb310_300K_eq_v2
+print           "DONE_EQ_V2: A = $(v_A_area:%.4f) A^2 | T_mob = $(c_T_mob:%.1f) K | tn_bot = $(v_tn_bot:%.4f) GPa"

@@ -1,0 +1,45 @@
+# ==============================================================================
+# Passo 3.2a: Equilibracao termica do bicristal Cu Sigma5(310) a 300 K (20 ps)
+# Escala exata pelo parametro de rede bulk a(300 K) / a(0 K) = 1.00468696
+# ==============================================================================
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       ../02_lammps_gb_310/data.gb310_H40_eq
+
+# Aplicar expansao termica de equilibrio 0 K -> 300 K antes de termostatizar
+variable        s300 equal 3.631868/3.614925
+change_box      all x scale ${s300} y scale ${s300} z scale ${s300} remap
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+reset_timestep  0
+timestep        0.001
+
+velocity        all create 600.0 741852 mom yes rot yes dist gaussian
+fix             1 all nvt temp 300.0 300.0 0.1
+
+variable        t_ps  equal step*dt
+variable        T     equal temp
+variable        PE    equal pe
+variable        Pxx   equal pxx/1.0e4
+variable        Pyy   equal pyy/1.0e4
+fix             logeq all print 100 "${t_ps} ${T} ${PE} ${Pxx} ${Pyy}" file eq_gb310_300K.dat screen no title "# t_ps Temp_K PE_eV Pxx_GPa Pyy_GPa"
+
+thermo          2000
+thermo_style    custom step temp pe etotal lx ly pxx pyy
+run             20000
+
+unfix           1
+unfix           logeq
+velocity        all zero linear
+
+write_restart   restart.gb310_300K_eq
+write_data      data.gb310_300K_eq
+print           "DONE_EQ_300K: Lx = $(lx:%.5f) A, Ly = $(ly:%.5f) A"

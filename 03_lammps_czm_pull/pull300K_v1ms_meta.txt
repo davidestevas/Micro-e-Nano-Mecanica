@@ -1,0 +1,1 @@
+# Cu Sigma5(310) 300 K pull | vtag=v1ms | vel=0.01 A/ps | Lmob0=10.0696698988449 A | Area=166.847653330225 A^2 | Nmob=128

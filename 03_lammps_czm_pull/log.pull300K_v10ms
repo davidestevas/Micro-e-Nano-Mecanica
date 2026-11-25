@@ -1,0 +1,130 @@
+LAMMPS (23 Jun 2022 - Update 1)
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_restart    restart.gb310_300K_eq_v2
+Reading restart file ...
+  restart file = 23 Jun 2022, LAMMPS = 23 Jun 2022
+  restoring atom style atomic from restart
+  orthogonal box = (-0.026789235 -0.033886 -40.22888) to (11.458186 14.493586 39.964862)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/alloy stores no restart info
+  1120 atoms
+  read_restart CPU = 0.003 seconds
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+reset_timestep  0
+timestep        0.001
+
+variable        A_area equal $(lx*ly)
+variable        A_area equal 166.8476533302251994
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_bmax equal -5.1681487765923961319
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        z_tmin equal 4.901521122252475493
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        Lmob0  equal 10.06966989884487873
+variable        Nmob   equal $(count(mobile))
+variable        Nmob   equal 128
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 ${vel}
+velocity        top_fix set 0.0 0.0 0.10
+
+compute         T_xy   mobile temp/partial 1 1 0
+compute         T_all  mobile temp
+compute         ftop   top_fix reduce sum fx fy fz
+compute         fbot   bot_fix reduce sum fx fy fz
+
+fix             1 mobile nvt temp 300.0 300.0 0.1
+fix_modify      1 temp T_xy
+WARNING: Temperature for fix modify is not for group all (src/fix_nh.cpp:1423)
+fix             2 top_fix move linear 0.0 0.0 ${vel} units box
+fix             2 top_fix move linear 0.0 0.0 0.10 units box
+
+variable        u_grip equal step*dt*${vel}
+variable        u_grip equal step*dt*0.10
+variable        tn_top equal -c_ftop[3]/v_A_area*160.2176634
+variable        tn_bot equal  c_fbot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+variable        ts_x   equal -c_ftop[1]/v_A_area*160.2176634
+variable        ts_y   equal -c_ftop[2]/v_A_area*160.2176634
+
+print           "# Cu Sigma5(310) 300 K pull | vtag=${vtag} | vel=${vel} A/ps | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file pull300K_${vtag}_meta.txt screen no
+print           "# Cu Sigma5(310) 300 K pull | vtag=${vtag} | vel=${vel} A/ps | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file pull300K_v10ms_meta.txt screen no
+
+fix             out all ave/time 1 ${ave_n} ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_${vtag}.dat
+fix             out all ave/time 1 25 ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_${vtag}.dat
+fix             out all ave/time 1 25 25 v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_${vtag}.dat
+fix             out all ave/time 1 25 25 v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_v10ms.dat
+
+variable        dfreq equal floor(${nsteps}/40)
+variable        dfreq equal floor(100000/40)
+dump            1 all custom ${dfreq} dump.pull300K_${vtag}.lammpstrj id type x y z
+dump            1 all custom 2500 dump.pull300K_${vtag}.lammpstrj id type x y z
+dump            1 all custom 2500 dump.pull300K_v10ms.lammpstrj id type x y z
+dump_modify     1 sort id
+
+thermo          20000
+thermo_style    custom step v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all pe
+
+run             ${nsteps}
+run             100000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 4 4 22
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 5.279 | 5.279 | 5.279 Mbytes
+   Step        v_u_grip       v_tn_avg       v_tn_top       v_tn_bot        c_T_xy        c_T_all         PotEng    
+         0   0             -0.1551514     -1.8655822      1.5552794      320.20987      322.13662     -3917.2936    
+     20000   2              15.656907      15.796895      15.516918      263.90462      278.67538     -3892.2629    
+     40000   4              2.1498054      1.8516307      2.4479802      285.66623      293.6233      -3894.5654    
+     60000   6              1.4533575     -0.10718333     3.0138984      284.14755      276.04033     -3892.5334    
+     80000   8             -0.49905744    -0.73542356    -0.26269132     308.5417       306.39294     -3892.5734    
+    100000   10             1.3929643     -0.1009172      2.8868458      322.42491      324.99843     -3891.8226    
+Loop time of 354.084 on 1 procs for 100000 steps with 1120 atoms
+
+Performance: 24.401 ns/day, 0.984 hours/ns, 282.419 timesteps/s
+94.5% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 337.87     | 337.87     | 337.87     |   0.0 | 95.42
+Neigh   | 0.253      | 0.253      | 0.253      |   0.0 |  0.07
+Comm    | 4.2609     | 4.2609     | 4.2609     |   0.0 |  1.20
+Output  | 0.07305    | 0.07305    | 0.07305    |   0.0 |  0.02
+Modify  | 10.176     | 10.176     | 10.176     |   0.0 |  2.87
+Other   |            | 1.446      |            |       |  0.41
+
+Nlocal:           1120 ave        1120 max        1120 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           4475 ave        4475 max        4475 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          72931 ave       72931 max       72931 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 72931
+Ave neighs/atom = 65.116964
+Neighbor list builds = 66
+Dangerous builds = 0
+
+print           "DONE_300K [${vtag}]: Lmob0 = $(v_Lmob0:%.4f) A | u_end = $(v_u_grip:%.3f) A | tn_end = $(v_tn_avg:%.4f) GPa"
+DONE_300K [v10ms]: Lmob0 = 10.0697 A | u_end = 10.000 A | tn_end = 1.3930 GPa
+Total wall time: 0:05:54

@@ -1,0 +1,77 @@
+# ==============================================================================
+# Passo 3.1: Extracao da Lei Coesiva a 0 K para Cu Sigma5(310)[001] (C1 passo 1)
+# Incrementos de 0.02 A com minimizacao CG (350 passos -> u_max = 7.00 A)
+# Uso: lmp_serial -var zmob 7.5 -var tag Hmob15 -in in.cu_pull_0K
+# ==============================================================================
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       ../02_lammps_gb_310/data.gb310_H40_eq
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# Definir blocos exteriores rigidos e zona movel
+region          r_bot block INF INF INF INF INF -${zmob} units box
+region          r_top block INF INF INF INF  ${zmob} INF units box
+
+group           bot_fix region r_bot
+group           top_fix region r_top
+group           mobile  subtract all bot_fix top_fix
+
+fix             f_bot bot_fix setforce 0.0 0.0 0.0
+fix             f_top top_fix setforce 0.0 0.0 0.0
+
+thermo          500
+thermo_style    custom step pe f_f_top[1] f_f_top[2] f_f_top[3] f_f_bot[3] fmax
+
+# Estado inicial u = 0
+min_style       cg
+minimize        0.0 1.0e-10 5000 50000
+run             0
+
+variable        A_area equal $(lx*ly)
+variable        E0     equal $(pe)
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        du     equal 0.02
+variable        nsteps equal 350
+
+print           "# Cu Sigma5(310) 0 K pull | tag=${tag} | zmob=${zmob} A | Lmob0=${Lmob0} A | Area=${A_area} A^2 | E0=${E0} eV" file pull0K_${tag}.dat screen no
+print           "# istep u_grip_A tn_avg_GPa tn_top_GPa tn_bot_GPa ts_x_GPa ts_y_GPa dE_Jm2" append pull0K_${tag}.dat screen no
+
+variable        tn_top equal -f_f_top[3]/v_A_area*160.2176634
+variable        tn_bot equal  f_f_bot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+variable        ts_x   equal -f_f_top[1]/v_A_area*160.2176634
+variable        ts_y   equal -f_f_top[2]/v_A_area*160.2176634
+variable        dE_Jm2 equal  (pe-v_E0)/v_A_area*16.02176634
+
+print           "0 0.000000 ${tn_avg} ${tn_top} ${tn_bot} ${ts_x} ${ts_y} ${dE_Jm2}" append pull0K_${tag}.dat screen no
+write_dump      all custom dump.pull0K_${tag}.lammpstrj id type x y z modify sort id
+
+# Ciclo de tracao quasi-estatica (0.02 A por passo)
+variable        istep loop ${nsteps}
+label           loopPull
+
+  displace_atoms  top_fix move 0.0 0.0 ${du} units box
+  min_style       cg
+  minimize        0.0 1.0e-10 5000 50000
+  run             0
+
+  variable        u_grip equal ${istep}*${du}
+  print           "${istep} ${u_grip} ${tn_avg} ${tn_top} ${tn_bot} ${ts_x} ${ts_y} ${dE_Jm2}" append pull0K_${tag}.dat screen no
+
+  variable        mod25 equal ${istep}%25
+  if "${mod25} == 0" then "write_dump all custom dump.pull0K_${tag}.lammpstrj id type x y z modify append yes sort id"
+
+next            istep
+jump            SELF loopPull
+
+print           "DONE [${tag}]: Lmob0 = $(v_Lmob0:%.4f) A | dE_final = $(v_dE_Jm2:%.6f) J/m^2 | tn_final = $(v_tn_avg:%.5f) GPa"

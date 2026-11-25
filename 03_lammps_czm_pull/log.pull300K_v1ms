@@ -1,0 +1,175 @@
+LAMMPS (23 Jun 2022 - Update 1)
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_restart    restart.gb310_300K_eq_v2
+Reading restart file ...
+  restart file = 23 Jun 2022, LAMMPS = 23 Jun 2022
+  restoring atom style atomic from restart
+  orthogonal box = (-0.026789235 -0.033886 -40.22888) to (11.458186 14.493586 39.964862)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/alloy stores no restart info
+  1120 atoms
+  read_restart CPU = 0.002 seconds
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+reset_timestep  0
+timestep        0.001
+
+variable        A_area equal $(lx*ly)
+variable        A_area equal 166.8476533302251994
+variable        z_bmax equal $(bound(bot_fix,zmax))
+variable        z_bmax equal -5.1681487765923961319
+variable        z_tmin equal $(bound(top_fix,zmin))
+variable        z_tmin equal 4.901521122252475493
+variable        Lmob0  equal $(v_z_tmin-v_z_bmax)
+variable        Lmob0  equal 10.06966989884487873
+variable        Nmob   equal $(count(mobile))
+variable        Nmob   equal 128
+
+velocity        bot_fix set 0.0 0.0 0.0
+velocity        top_fix set 0.0 0.0 ${vel}
+velocity        top_fix set 0.0 0.0 0.01
+
+compute         T_xy   mobile temp/partial 1 1 0
+compute         T_all  mobile temp
+compute         ftop   top_fix reduce sum fx fy fz
+compute         fbot   bot_fix reduce sum fx fy fz
+
+fix             1 mobile nvt temp 300.0 300.0 0.1
+fix_modify      1 temp T_xy
+WARNING: Temperature for fix modify is not for group all (src/fix_nh.cpp:1423)
+fix             2 top_fix move linear 0.0 0.0 ${vel} units box
+fix             2 top_fix move linear 0.0 0.0 0.01 units box
+
+variable        u_grip equal step*dt*${vel}
+variable        u_grip equal step*dt*0.01
+variable        tn_top equal -c_ftop[3]/v_A_area*160.2176634
+variable        tn_bot equal  c_fbot[3]/v_A_area*160.2176634
+variable        tn_avg equal  0.5*(v_tn_top+v_tn_bot)
+variable        ts_x   equal -c_ftop[1]/v_A_area*160.2176634
+variable        ts_y   equal -c_ftop[2]/v_A_area*160.2176634
+
+print           "# Cu Sigma5(310) 300 K pull | vtag=${vtag} | vel=${vel} A/ps | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file pull300K_${vtag}_meta.txt screen no
+print           "# Cu Sigma5(310) 300 K pull | vtag=${vtag} | vel=${vel} A/ps | Lmob0=${Lmob0} A | Area=${A_area} A^2 | Nmob=${Nmob}" file pull300K_v1ms_meta.txt screen no
+
+fix             out all ave/time 1 ${ave_n} ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_${vtag}.dat
+fix             out all ave/time 1 250 ${ave_n} v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_${vtag}.dat
+fix             out all ave/time 1 250 250 v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_${vtag}.dat
+fix             out all ave/time 1 250 250 v_u_grip v_tn_avg v_tn_top v_tn_bot v_ts_x v_ts_y c_T_xy c_T_all file pull300K_v1ms.dat
+
+variable        dfreq equal floor(${nsteps}/40)
+variable        dfreq equal floor(1000000/40)
+dump            1 all custom ${dfreq} dump.pull300K_${vtag}.lammpstrj id type x y z
+dump            1 all custom 25000 dump.pull300K_${vtag}.lammpstrj id type x y z
+dump            1 all custom 25000 dump.pull300K_v1ms.lammpstrj id type x y z
+dump_modify     1 sort id
+
+thermo          20000
+thermo_style    custom step v_u_grip v_tn_avg v_tn_top v_tn_bot c_T_xy c_T_all pe
+
+run             ${nsteps}
+run             1000000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 4 4 22
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 5.279 | 5.279 | 5.279 Mbytes
+   Step        v_u_grip       v_tn_avg       v_tn_top       v_tn_bot        c_T_xy        c_T_all         PotEng    
+         0   0             -0.1551514     -1.8655822      1.5552794      320.20987      322.13662     -3917.2936    
+     20000   0.2            2.8086253      1.3691784      4.2480722      280.08203      266.71559     -3916.2711    
+     40000   0.4            4.7085768      3.8383508      5.5788027      284.06182      291.52554     -3915.8126    
+     60000   0.6            6.9883824      5.6163576      8.3604071      283.95619      281.70745     -3913.7745    
+     80000   0.8            9.9628607      9.1620205      10.763701      302.6386       301.04025     -3911.7708    
+    100000   1              11.010785      10.782062      11.239507      259.18381      269.77998     -3908.7297    
+    120000   1.2            11.146652      11.221569      11.071735      288.52457      276.56245     -3906.0589    
+    140000   1.4            12.18923       11.408227      12.970232      288.69467      288.0156      -3902.7181    
+    160000   1.6            12.410073      13.596445      11.223701      242.83378      262.09616     -3899.0481    
+    180000   1.8            13.871623      15.021351      12.721894      275.86365      273.98316     -3896.1884    
+    200000   2              15.556583      15.180586      15.93258       268.7248       267.35767     -3892.5493    
+    220000   2.2            7.2706662      5.9830537      8.5582786      307.8462       298.60882     -3898.4585    
+    240000   2.4            4.4985611      3.8523516      5.1447707      257.20923      256.92907     -3897.3905    
+    260000   2.6            1.7249052      2.1042744      1.345536       309.65005      310.51726     -3897.5747    
+    280000   2.8            4.8703424      4.7735687      4.9671161      299.00531      263.99975     -3896.5944    
+    300000   3              2.4760501      2.38996        2.5621402      267.78068      261.88373     -3896.0672    
+    320000   3.2            2.6301373      1.5608838      3.6993908      320.30079      306.37017     -3895.3699    
+    340000   3.4            3.1524142      2.4339875      3.8708409      304.60176      293.25754     -3894.7917    
+    360000   3.6            1.4247845      1.8823408      0.96722822     355.40955      318.76464     -3894.9251    
+    380000   3.8            2.3533068      3.8698786      0.83673493     324.05518      306.17164     -3894.7349    
+    400000   4              2.8553685      4.9602158      0.75052124     364.37704      340.89729     -3894.5362    
+    420000   4.2            1.2175901      2.1820936      0.25308654     297.40491      301.29455     -3893.5731    
+    440000   4.4            1.0113659      1.7770733      0.24565836     272.92667      276.28354     -3893.3213    
+    460000   4.6            1.3232939      2.6612462     -0.01465837     312.06742      307.43167     -3893.9878    
+    480000   4.8            0.085659488    0.31146732    -0.14014834     269.56692      272.55352     -3893.927     
+    500000   5              0.29698419     1.6805749     -1.0866065      254.25366      259.01157     -3893.2699    
+    520000   5.2            1.632165      -0.28431807     3.548648       322.55344      297.54121     -3892.3573    
+    540000   5.4            3.6371648      3.9419278      3.3324018      276.46712      267.20999     -3892.4561    
+    560000   5.6            0.69417926     0.53392824     0.85443028     260.81835      279.37442     -3892.4262    
+    580000   5.8            0.33982794    -1.2348787      1.9145346      285.20114      286.63177     -3892.0913    
+    600000   6              1.0591718      2.2420751     -0.12373146     311.06098      286.76535     -3892.9485    
+    620000   6.2           -1.4236477     -0.51551489    -2.3317806      278.49024      290.71472     -3893.1054    
+    640000   6.4            0.57471575    -1.0609884      2.2104199      313.70032      314.54747     -3892.4877    
+    660000   6.6           -0.4002957     -1.6326614      0.83207004     361.5427       353.83567     -3892.0869    
+    680000   6.8            0.26588246     0.67840192    -0.146637       266.7892       280.10711     -3891.3379    
+    700000   7             -1.2761547     -2.8764817      0.32417225     298.19158      296.72471     -3891.9542    
+    720000   7.2            1.0408416      1.6464413      0.43524195     309.84741      285.41748     -3891.9774    
+    740000   7.4           -0.2684543     -1.2963879      0.7594793      311.63525      303.93472     -3892.5906    
+    760000   7.6            0.51221433     1.9973227     -0.97289405     297.73079      301.88876     -3892.7422    
+    780000   7.8           -0.095274111    0.90536096    -1.0959092      335.61066      330.15061     -3892.4246    
+    800000   8             -0.17726843     0.73417233    -1.0887092      263.26101      274.14092     -3891.9143    
+    820000   8.2           -0.0032160781  -0.530535       0.52410285     294.95045      299.06159     -3892.2641    
+    840000   8.4            1.1158369      1.115408       1.1162658      297.09931      286.5758      -3891.8856    
+    860000   8.6            1.8791835      2.0104907      1.7478762      290.29528      295.10429     -3891.6373    
+    880000   8.8            1.0766404      0.42428323     1.7289975      304.75019      311.8948      -3892.0447    
+    900000   9             -1.5996128     -0.64016792    -2.5590577      271.39509      279.0603      -3892.3599    
+    920000   9.2           -1.8882512     -3.460685      -0.31581735     289.16135      298.78732     -3892.6639    
+    940000   9.4            1.3136705      0.61582453     2.0115164      356.01111      325.82256     -3892.4117    
+    960000   9.6            0.7198716     -0.079238099    1.5189813      283.73182      283.19868     -3892.4117    
+    980000   9.8           -1.2344604     -1.9160391     -0.55288169     301.64374      301.92933     -3892.1215    
+   1000000   10             1.3480409      2.2150711      0.48101074     307.82526      321.81922     -3891.8788    
+Loop time of 9054.11 on 1 procs for 1000000 steps with 1120 atoms
+
+Performance: 9.543 ns/day, 2.515 hours/ns, 110.447 timesteps/s
+28.5% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 8943.5     | 8943.5     | 8943.5     |   0.0 | 98.78
+Neigh   | 1.6006     | 1.6006     | 1.6006     |   0.0 |  0.02
+Comm    | 29.373     | 29.373     | 29.373     |   0.0 |  0.32
+Output  | 0.10157    | 0.10157    | 0.10157    |   0.0 |  0.00
+Modify  | 69.925     | 69.925     | 69.925     |   0.0 |  0.77
+Other   |            | 9.662      |            |       |  0.11
+
+Nlocal:           1120 ave        1120 max        1120 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           4454 ave        4454 max        4454 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          72873 ave       72873 max       72873 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 72873
+Ave neighs/atom = 65.065179
+Neighbor list builds = 461
+Dangerous builds = 0
+
+print           "DONE_300K [${vtag}]: Lmob0 = $(v_Lmob0:%.4f) A | u_end = $(v_u_grip:%.3f) A | tn_end = $(v_tn_avg:%.4f) GPa"
+DONE_300K [v1ms]: Lmob0 = 10.0697 A | u_end = 10.000 A | tn_end = 1.3480 GPa
+Total wall time: 2:30:54

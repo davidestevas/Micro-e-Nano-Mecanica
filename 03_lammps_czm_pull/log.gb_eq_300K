@@ -1,0 +1,117 @@
+LAMMPS (23 Jun 2022 - Update 1)
+# ==============================================================================
+# Passo 3.2a: Equilibracao termica do bicristal Cu Sigma5(310) a 300 K (20 ps)
+# Escala exata pelo parametro de rede bulk a(300 K) / a(0 K) = 1.00468696
+# ==============================================================================
+units           metal
+dimension       3
+boundary        p p s
+atom_style      atomic
+
+read_data       ../02_lammps_gb_310/data.gb310_H40_eq
+Reading data file ...
+  orthogonal box = (0 0 -40.02089) to (11.431397 14.4597 39.765702)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  1120 atoms
+  reading velocities ...
+  1120 velocities
+  read_data CPU = 0.008 seconds
+
+# Aplicar expansao termica de equilibrio 0 K -> 300 K antes de termostatizar
+variable        s300 equal 3.631868/3.614925
+change_box      all x scale ${s300} y scale ${s300} z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale ${s300} z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale 1.00468695754407 z scale ${s300} remap
+change_box      all x scale 1.00468695754407 y scale 1.00468695754407 z scale 1.00468695754407 remap
+Changing box ...
+  orthogonal box = (-0.026789235 0 -40.025845) to (11.458186 14.4597 39.770656)
+  orthogonal box = (-0.026789235 -0.033886 -40.033824) to (11.458186 14.493586 39.778636)
+  orthogonal box = (-0.026789235 -0.033886 -40.228882) to (11.458186 14.493586 39.973693)
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+reset_timestep  0
+timestep        0.001
+
+velocity        all create 600.0 741852 mom yes rot yes dist gaussian
+fix             1 all nvt temp 300.0 300.0 0.1
+
+variable        t_ps  equal step*dt
+variable        T     equal temp
+variable        PE    equal pe
+variable        Pxx   equal pxx/1.0e4
+variable        Pyy   equal pyy/1.0e4
+fix             logeq all print 100 "${t_ps} ${T} ${PE} ${Pxx} ${Pyy}" file eq_gb310_300K.dat screen no title "# t_ps Temp_K PE_eV Pxx_GPa Pyy_GPa"
+
+thermo          2000
+thermo_style    custom step temp pe etotal lx ly pxx pyy
+run             20000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 4 4 22
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 3.557 | 3.557 | 3.557 Mbytes
+   Step          Temp          PotEng         TotEng           Lx             Ly            Pxx            Pyy      
+         0   600           -3922.1035     -3835.3182      11.484975      14.527472     -19330.369     -19731.295    
+      2000   304.44602     -3879.7281     -3835.6923      11.484975      14.527472     -3319.2933     -3690.2889    
+      4000   319.18569     -3878.784      -3832.6163      11.484975      14.527472     -7085.8039     -8110.8196    
+      6000   312.89483     -3879.5465     -3834.2888      11.484975      14.527472     -5698.2029     -5111.0144    
+      8000   285.19104     -3879.3649     -3838.1143      11.484975      14.527472     -6060.7749     -5822.0698    
+     10000   300.88946     -3877.6456     -3834.1243      11.484975      14.527472     -3468.5364     -4904.667     
+     12000   294.50863     -3878.5278     -3835.9294      11.484975      14.527472     -4911.2867     -4063.6099    
+     14000   297.50316     -3879.9283     -3836.8968      11.484975      14.527472     -3803.0654     -2993.0563    
+     16000   292.96315     -3879.4895     -3837.1147      11.484975      14.527472     -7302.2262     -8218.3161    
+     18000   299.70744     -3881.122      -3837.7717      11.484975      14.527472     -4150.7311     -3165.6877    
+     20000   300.33541     -3880.1364     -3836.6953      11.484975      14.527472     -7971.4724     -6656.9266    
+Loop time of 97.6573 on 1 procs for 20000 steps with 1120 atoms
+
+Performance: 17.695 ns/day, 1.356 hours/ns, 204.798 timesteps/s
+79.7% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 95.436     | 95.436     | 95.436     |   0.0 | 97.72
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 1.0042     | 1.0042     | 1.0042     |   0.0 |  1.03
+Output  | 0.00023982 | 0.00023982 | 0.00023982 |   0.0 |  0.00
+Modify  | 0.87488    | 0.87488    | 0.87488    |   0.0 |  0.90
+Other   |            | 0.3424     |            |       |  0.35
+
+Nlocal:           1120 ave        1120 max        1120 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           4471 ave        4471 max        4471 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          75560 ave       75560 max       75560 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 75560
+Ave neighs/atom = 67.464286
+Neighbor list builds = 0
+Dangerous builds = 0
+
+unfix           1
+unfix           logeq
+velocity        all zero linear
+
+write_restart   restart.gb310_300K_eq
+System init for write_restart ...
+write_data      data.gb310_300K_eq
+System init for write_data ...
+print           "DONE_EQ_300K: Lx = $(lx:%.5f) A, Ly = $(ly:%.5f) A"
+DONE_EQ_300K: Lx = 11.48498 A, Ly = 14.52747 A
+Total wall time: 0:01:37
