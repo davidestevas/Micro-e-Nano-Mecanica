@@ -1,0 +1,73 @@
+# ==============================================================================
+# Check B1: dependencia de C11, C12, C44 na amplitude de deformacao delta (0 K)
+# ==============================================================================
+variable        d index 1.0e-4 1.0e-3 5.0e-3 1.0e-2
+print           "delta,C11_GPa,C12_GPa,C44_GPa" file cu_delta_check_0K.csv screen no
+
+label           loopD
+  # +ex
+  clear
+  read_restart  ref_Cu_0K.restart
+  pair_style    eam/alloy
+  pair_coeff    * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+  neighbor      2.0 bin
+  neigh_modify  every 1 delay 0 check yes
+  thermo_style  custom step pe pxx pyy pzz pyz pxz pxy
+  change_box    all x scale $(1.0+v_d) remap
+  min_style     cg
+  minimize      0.0 1.0e-12 10000 100000
+  run           0
+  variable      sxx_p equal $(-pxx/1.0e4)
+  variable      syy_p equal $(-pyy/1.0e4)
+
+  # -ex
+  clear
+  read_restart  ref_Cu_0K.restart
+  pair_style    eam/alloy
+  pair_coeff    * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+  neighbor      2.0 bin
+  neigh_modify  every 1 delay 0 check yes
+  thermo_style  custom step pe pxx pyy pzz pyz pxz pxy
+  change_box    all x scale $(1.0-v_d) remap
+  min_style     cg
+  minimize      0.0 1.0e-12 10000 100000
+  run           0
+  variable      sxx_m equal $(-pxx/1.0e4)
+  variable      syy_m equal $(-pyy/1.0e4)
+
+  # +gxy
+  clear
+  read_restart  ref_Cu_0K.restart
+  pair_style    eam/alloy
+  pair_coeff    * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+  neighbor      2.0 bin
+  neigh_modify  every 1 delay 0 check yes
+  thermo_style  custom step pe pxx pyy pzz pyz pxz pxy
+  change_box    all xy delta $(v_d*ly) remap
+  min_style     cg
+  minimize      0.0 1.0e-12 10000 100000
+  run           0
+  variable      sxy_p equal $(-pxy/1.0e4)
+
+  # -gxy
+  clear
+  read_restart  ref_Cu_0K.restart
+  pair_style    eam/alloy
+  pair_coeff    * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+  neighbor      2.0 bin
+  neigh_modify  every 1 delay 0 check yes
+  thermo_style  custom step pe pxx pyy pzz pyz pxz pxy
+  change_box    all xy delta $(-v_d*ly) remap
+  min_style     cg
+  minimize      0.0 1.0e-12 10000 100000
+  run           0
+  variable      sxy_m equal $(-pxy/1.0e4)
+
+  variable      c11 equal (v_sxx_p-v_sxx_m)/(2.0*v_d)
+  variable      c12 equal (v_syy_p-v_syy_m)/(2.0*v_d)
+  variable      c44 equal (v_sxy_p-v_sxy_m)/(2.0*v_d)
+
+  print         "delta = ${d} -> C11 = $(v_c11:%.4f), C12 = $(v_c12:%.4f), C44 = $(v_c44:%.4f) GPa"
+  print         "${d},${c11},${c12},${c44}" append cu_delta_check_0K.csv screen no
+next            d
+jump            SELF loopD

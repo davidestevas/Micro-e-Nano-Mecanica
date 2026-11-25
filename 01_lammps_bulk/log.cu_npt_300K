@@ -1,0 +1,100 @@
+LAMMPS (23 Jun 2022 - Update 1)
+# ==============================================================================
+# Passo 1.3a: Equilibracao NPT a 300 K e P = 0 para obter a(300 K)
+# Caixa 8x8x8 (2048 atomos), dt = 1.0 fs, 40 ps totais (10 ps eq + 30 ps prod)
+# ==============================================================================
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+variable        n equal 8
+
+lattice         fcc 3.614925
+Lattice spacing in x,y,z = 3.614925 3.614925 3.614925
+region          box block 0 ${n} 0 ${n} 0 ${n}
+region          box block 0 8 0 ${n} 0 ${n}
+region          box block 0 8 0 8 0 ${n}
+region          box block 0 8 0 8 0 8
+create_box      1 box
+Created orthogonal box = (0 0 0) to (28.9194 28.9194 28.9194)
+  1 by 1 by 1 MPI processor grid
+create_atoms    1 box
+Created 2048 atoms
+  using lattice units in orthogonal box = (0 0 0) to (28.9194 28.9194 28.9194)
+  create_atoms CPU = 0.001 seconds
+mass            1 63.546
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+timestep        0.001
+velocity        all create 600.0 492845 mom yes rot yes dist gaussian
+
+fix             1 all npt temp 300.0 300.0 0.1 iso 0.0 0.0 1.0
+
+variable        t_ps  equal step*dt
+variable        T     equal temp
+variable        P_GPa equal press/1.0e4
+variable        a_A   equal lx/v_n
+variable        PE    equal pe
+
+fix             out all print 20 "${t_ps} ${T} ${P_GPa} ${a_A} ${PE}" file npt_300K_8x8x8.dat screen no title "# t_ps Temp_K P_GPa a_A PE_eV"
+
+thermo          5000
+thermo_style    custom step temp press lx pe
+run             40000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 8 8 8
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 3.962 | 3.962 | 3.962 Mbytes
+   Step          Temp          Press            Lx           PotEng    
+         0   600            7011.1568      28.9194       -7250.3671    
+      5000   304.76232     -1091.3771      29.061933     -7170.1212    
+     10000   309.36293     -131.4378       29.054395     -7170.5951    
+     15000   294.50701     -345.17745      29.056726     -7169.4906    
+     20000   297.8135       332.23189      29.052851     -7168.737     
+     25000   298.91561     -237.0416       29.053902     -7170.9447    
+     30000   295.80567      168.23556      29.052688     -7169.7719    
+     35000   305.08481      1052.0736      29.049427     -7168.3557    
+     40000   301.27807     -602.68242      29.059482     -7169.1967    
+Loop time of 465.041 on 1 procs for 40000 steps with 2048 atoms
+
+Performance: 7.432 ns/day, 3.229 hours/ns, 86.014 timesteps/s
+89.2% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 453.03     | 453.03     | 453.03     |   0.0 | 97.42
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 3.1578     | 3.1578     | 3.1578     |   0.0 |  0.68
+Output  | 0.0012624  | 0.0012624  | 0.0012624  |   0.0 |  0.00
+Modify  | 7.5145     | 7.5145     | 7.5145     |   0.0 |  1.62
+Other   |            | 1.335      |            |       |  0.29
+
+Nlocal:           2048 ave        2048 max        2048 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           5765 ave        5765 max        5765 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:         143360 ave      143360 max      143360 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 143360
+Ave neighs/atom = 70
+Neighbor list builds = 0
+Dangerous builds = 0
+Total wall time: 0:07:45

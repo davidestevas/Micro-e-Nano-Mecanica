@@ -1,0 +1,228 @@
+LAMMPS (23 Jun 2022 - Update 1)
+# ==============================================================================
+# Passo 1.2: Verificacao NVE a 300 K (dt = 1.0 fs vs 0.5 fs)
+# Verifica drift relativo < 1e-4, H <= 0.05 (Eq. 30.8) e convergencia O(dt^2)
+# ==============================================================================
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+lattice         fcc 3.614925
+Lattice spacing in x,y,z = 3.614925 3.614925 3.614925
+region          box block 0 6 0 6 0 6
+create_box      1 box
+Created orthogonal box = (0 0 0) to (21.68955 21.68955 21.68955)
+  1 by 1 by 1 MPI processor grid
+create_atoms    1 box
+Created 864 atoms
+  using lattice units in orthogonal box = (0 0 0) to (21.68955 21.68955 21.68955)
+  create_atoms CPU = 0.003 seconds
+mass            1 63.546
+
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+# 1. Equilibracao curta em NPT a 300 K (10 ps) para preparar o estado inicial
+timestep        0.001
+velocity        all create 600.0 492845 mom yes rot yes dist gaussian
+
+thermo          2000
+thermo_style    custom step temp pe ke etotal press lx
+
+fix             eq all npt temp 300.0 300.0 0.1 iso 0.0 0.0 1.0
+run             10000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 6 6 6
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 3.484 | 3.484 | 3.484 Mbytes
+   Step          Temp          PotEng         KinEng         TotEng         Press            Lx      
+         0   600           -3058.7486      66.930903     -2991.8177      7006.4632      21.68955     
+      2000   300.38685     -3023.5189      33.508605     -2990.0103      2379.5242      21.781868    
+      4000   302.84461     -3025.0589      33.782772     -2991.2762      1611.2194      21.78116     
+      6000   301.8413      -3024.3639      33.670852     -2990.693       2266.5888      21.78027     
+      8000   302.91819     -3024.6999      33.79098      -2990.9089      4856.454       21.765948    
+     10000   296.82516     -3025.7508      33.111293     -2992.6395      1936.5827      21.77842     
+Loop time of 46.4673 on 1 procs for 10000 steps with 864 atoms
+
+Performance: 18.594 ns/day, 1.291 hours/ns, 215.205 timesteps/s
+88.1% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 45.128     | 45.128     | 45.128     |   0.0 | 97.12
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.43779    | 0.43779    | 0.43779    |   0.0 |  0.94
+Output  | 0.00035336 | 0.00035336 | 0.00035336 |   0.0 |  0.00
+Modify  | 0.74869    | 0.74869    | 0.74869    |   0.0 |  1.61
+Other   |            | 0.1527     |            |       |  0.33
+
+Nlocal:            864 ave         864 max         864 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           3767 ave        3767 max        3767 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          60480 ave       60480 max       60480 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 60480
+Ave neighs/atom = 70
+Neighbor list builds = 0
+Dangerous builds = 0
+unfix           eq
+
+# Zerar momento linear antes de iniciar NVE
+velocity        all zero linear
+write_restart   restart.nve_init
+System init for write_restart ...
+
+# 2. Corrida microcanonica (NVE) 20 ps com dt = 1.0 fs
+reset_timestep  0
+timestep        0.001
+fix             nve1 all nve
+
+variable        t_ps  equal step*dt
+variable        T     equal temp
+variable        PE    equal pe
+variable        KE    equal ke
+variable        Etot  equal etotal
+variable        px_cm equal vcm(all,x)
+variable        py_cm equal vcm(all,y)
+variable        pz_cm equal vcm(all,z)
+
+fix             out1 all print 10 "${t_ps} ${T} ${PE} ${KE} ${Etot} ${px_cm} ${py_cm} ${pz_cm}" file nve_300K_dt1p0.dat screen no title "# t_ps Temp_K PE_eV KE_eV Etot_eV vcmx vcmy vcmz"
+
+thermo          5000
+thermo_style    custom step temp pe ke etotal
+run             20000
+Per MPI rank memory allocation (min/avg/max) = 3.484 | 3.484 | 3.484 Mbytes
+   Step          Temp          PotEng         KinEng         TotEng    
+         0   296.82516     -3025.7508      33.111293     -2992.6395    
+      5000   284.08096     -3024.3289      31.689658     -2992.6392    
+     10000   298.37345     -3025.9235      33.284008     -2992.6395    
+     15000   298.02551     -3025.8846      33.245194     -2992.6395    
+     20000   291.4209      -3025.1477      32.508441     -2992.6393    
+Loop time of 89.8349 on 1 procs for 20000 steps with 864 atoms
+
+Performance: 19.235 ns/day, 1.248 hours/ns, 222.631 timesteps/s
+91.9% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 87.694     | 87.694     | 87.694     |   0.0 | 97.62
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.98484    | 0.98484    | 0.98484    |   0.0 |  1.10
+Output  | 0.00021215 | 0.00021215 | 0.00021215 |   0.0 |  0.00
+Modify  | 0.82956    | 0.82956    | 0.82956    |   0.0 |  0.92
+Other   |            | 0.3263     |            |       |  0.36
+
+Nlocal:            864 ave         864 max         864 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           3765 ave        3765 max        3765 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          60967 ave       60967 max       60967 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 60967
+Ave neighs/atom = 70.563657
+Neighbor list builds = 0
+Dangerous builds = 0
+
+unfix           out1
+unfix           nve1
+
+# 3. Corrida microcanonica (NVE) 20 ps com dt = 0.5 fs a partir do mesmo estado
+clear
+read_restart    restart.nve_init
+Reading restart file ...
+  restart file = 23 Jun 2022, LAMMPS = 23 Jun 2022
+  restoring atom style atomic from restart
+  orthogonal box = (-0.044434987 -0.044434987 -0.044434987) to (21.733985 21.733985 21.733985)
+  1 by 1 by 1 MPI processor grid
+  pair style eam/alloy stores no restart info
+  864 atoms
+  read_restart CPU = 0.001 seconds
+pair_style      eam/alloy
+pair_coeff      * * ../00_potentials/Cu_mishin1.eam.alloy Cu
+Reading eam/alloy potential file ../00_potentials/Cu_mishin1.eam.alloy with DATE: 2007-10-12
+neighbor        2.0 bin
+neigh_modify    every 1 delay 0 check yes
+
+reset_timestep  0
+timestep        0.0005
+fix             nve2 all nve
+
+variable        t_ps  equal step*dt
+variable        T     equal temp
+variable        PE    equal pe
+variable        KE    equal ke
+variable        Etot  equal etotal
+variable        px_cm equal vcm(all,x)
+variable        py_cm equal vcm(all,y)
+variable        pz_cm equal vcm(all,z)
+
+fix             out2 all print 20 "${t_ps} ${T} ${PE} ${KE} ${Etot} ${px_cm} ${py_cm} ${pz_cm}" file nve_300K_dt0p5.dat screen no title "# t_ps Temp_K PE_eV KE_eV Etot_eV vcmx vcmy vcmz"
+
+thermo          10000
+thermo_style    custom step temp pe ke etotal
+run             40000
+Neighbor list info ...
+  update every 1 steps, delay 0 steps, check yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7.50679
+  ghost atom cutoff = 7.50679
+  binsize = 3.753395, bins = 6 6 6
+  1 neighbor lists, perpetual/occasional/extra = 1 0 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 3.467 | 3.467 | 3.467 Mbytes
+   Step          Temp          PotEng         KinEng         TotEng    
+         0   296.82516     -3025.7508      33.111293     -2992.6395    
+     10000   284.09155     -3024.3303      31.69084      -2992.6394    
+     20000   298.58564     -3025.9472      33.307677     -2992.6395    
+     30000   296.37289     -3025.7003      33.060842     -2992.6395    
+     40000   294.33852     -3025.4733      32.833905     -2992.6394    
+Loop time of 183.204 on 1 procs for 40000 steps with 864 atoms
+
+Performance: 9.432 ns/day, 2.544 hours/ns, 218.336 timesteps/s
+91.1% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 179.19     | 179.19     | 179.19     |   0.0 | 97.81
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 1.9981     | 1.9981     | 1.9981     |   0.0 |  1.09
+Output  | 0.00013015 | 0.00013015 | 0.00013015 |   0.0 |  0.00
+Modify  | 1.3457     | 1.3457     | 1.3457     |   0.0 |  0.73
+Other   |            | 0.6689     |            |       |  0.37
+
+Nlocal:            864 ave         864 max         864 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:           3765 ave        3765 max        3765 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:          60967 ave       60967 max       60967 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 60967
+Ave neighs/atom = 70.563657
+Neighbor list builds = 0
+Dangerous builds = 0
+Total wall time: 0:05:19
