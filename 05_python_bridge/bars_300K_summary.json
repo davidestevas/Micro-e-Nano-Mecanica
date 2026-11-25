@@ -1,0 +1,98 @@
+{
+  "L5nm_v10ms": {
+    "Lmob0_A": 50.8660205290827,
+    "Area_A2": 166.847653330225,
+    "vel_A_per_ps": 0.1,
+    "t_peak_smooth_GPa": 15.31239333333333,
+    "t_peak_raw_GPa": 16.6171,
+    "u_peak_A": 7.67755,
+    "u_end_A": 11.9976,
+    "tn_end_avg_GPa": 0.26005443333333333,
+    "max_gap_end_A": 9.747696,
+    "gap_z_range_A": [
+      0.775104,
+      10.5228
+    ],
+    "broke": true
+  },
+  "L5nm_v10ms_s2": {
+    "Lmob0_A": 50.8646906632276,
+    "Area_A2": 166.847653330225,
+    "vel_A_per_ps": 0.1,
+    "t_peak_smooth_GPa": 15.419820000000001,
+    "t_peak_raw_GPa": 16.5225,
+    "u_peak_A": 7.83755,
+    "u_end_A": 11.9976,
+    "tn_end_avg_GPa": -2.3368179,
+    "max_gap_end_A": 9.843467,
+    "gap_z_range_A": [
+      -0.813647,
+      9.02982
+    ],
+    "broke": true
+  },
+  "L5nm_v1ms": {
+    "Lmob0_A": 50.8660205290827,
+    "Area_A2": 166.847653330225,
+    "vel_A_per_ps": 0.01,
+    "t_peak_smooth_GPa": 14.232766666666668,
+    "t_peak_raw_GPa": 14.6847,
+    "u_peak_A": 6.6875,
+    "u_end_A": 11.9975,
+    "tn_end_avg_GPa": 0.02371827999999999,
+    "max_gap_end_A": 10.61378,
+    "gap_z_range_A": [
+      1.38442,
+      11.9982
+    ],
+    "broke": true
+  },
+  "L10nm_v10ms": {
+    "Lmob0_A": 100.856745983001,
+    "Area_A2": 166.847653330225,
+    "vel_A_per_ps": 0.1,
+    "t_peak_smooth_GPa": 15.271146666666668,
+    "t_peak_raw_GPa": 16.4191,
+    "u_peak_A": 14.4676,
+    "u_end_A": 17.9976,
+    "tn_end_avg_GPa": 0.4586603,
+    "max_gap_end_A": 17.21566,
+    "gap_z_range_A": [
+      -2.23066,
+      14.985
+    ],
+    "broke": true
+  },
+  "L20nm_v10ms": {
+    "Lmob0_A": 201.405097458186,
+    "Area_A2": 166.847653330225,
+    "vel_A_per_ps": 0.1,
+    "t_peak_smooth_GPa": 15.514146666666667,
+    "t_peak_raw_GPa": 16.8173,
+    "u_peak_A": 28.6651,
+    "u_end_A": 36.2551,
+    "tn_end_avg_GPa": 2.2906353,
+    "max_gap_end_A": 32.39845,
+    "gap_z_range_A": [
+      2.25865,
+      34.6571
+    ],
+    "broke": true
+  },
+  "L40nm_v10ms": {
+    "Lmob0_A": 402.52262463155,
+    "Area_A2": 166.847653330225,
+    "vel_A_per_ps": 0.1,
+    "t_peak_smooth_GPa": 15.2034,
+    "t_peak_raw_GPa": 16.1196,
+    "u_peak_A": 52.5676,
+    "u_end_A": 62.9926,
+    "tn_end_avg_GPa": 1.0253897933333334,
+    "max_gap_end_A": 56.61373999999999,
+    "gap_z_range_A": [
+      9.06466,
+      65.6784
+    ],
+    "broke": true
+  }
+}
