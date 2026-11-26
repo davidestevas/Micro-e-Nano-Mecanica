@@ -66,7 +66,7 @@ def extract_job(jobname):
     lpfs = lpf_hist
     tns = [l * F_ref / Area for l in lpfs]
 
-    # Encontrar o primeiro pico fisico (subida inicial com LPF > 0)
+    # Primeiro pico fisico
     ipk = 0
     for i in range(1, npts):
         if tns[i] > tns[ipk]:
@@ -74,17 +74,17 @@ def extract_job(jobname):
         if ipk > 5 and tns[i] < 0.85 * tns[ipk]:
             break
 
-    # Apos o pico, parar na rotura completa (Tn <= 0.05 GPa) ou quando ALLDMD deixa de crescer (descarga elastica)
+    # Apos o pico, parar na rotura completa (Tn <= 0.05 GPa) ou descarga elastica (ALLDMD congelado por >= 5 inc com Tn < 2 GPa)
     iend = npts
     stagnant = 0
     for i in range(ipk + 1, npts):
         if tns[i] <= 0.05:
             iend = i + 1
             break
-        if alldmd[i] <= alldmd[i - 1] + 1.0e-7 and tns[i] < 0.90 * tns[ipk]:
+        if tns[i] < 2.0 and alldmd[i] <= alldmd[i - 1] + 1.0e-7:
             stagnant += 1
-            if stagnant >= 2:
-                iend = i - 1
+            if stagnant >= 5:
+                iend = i - 4
                 break
         else:
             stagnant = 0
@@ -105,14 +105,18 @@ def extract_job(jobname):
     u_pk = us_c[ipk]
     u_min_post = min(us_c[ipk:])
     recuo = u_pk - u_min_post
-    snap = recuo > 1.0e-3
     G_dmd = alldmd[iend - 1] / Area
     G_vd = allvd[iend - 1] / Area
+    complete = (tns_c[-1] <= 1.0) and (G_dmd >= 1.5)
+    if not complete:
+        snap_str = "INCOMP"
+    else:
+        snap_str = "SIM" if (recuo > 1.0e-3) else "NAO"
 
     print("%-24s | pts=%3d | t_pk=%6.3f GPa @ u_pk=%6.4f nm | recuo=%6.4f nm | d_end=%6.4f nm | Tn_end=%5.3f | G_dmd=%.4f | Snap=%s" % (
-        jobname, iend, t_pk, u_pk, recuo, ds_c[-1], tns_c[-1], G_dmd, "SIM" if snap else "NAO"
+        jobname, iend, t_pk, u_pk, recuo, ds_c[-1], tns_c[-1], G_dmd, snap_str
     ))
-    return (jobname, iend, t_pk, u_pk, recuo, ds_c[-1], tns_c[-1], G_dmd, G_vd, "SIM" if snap else "NAO")
+    return (jobname, iend, t_pk, u_pk, recuo, ds_c[-1], tns_c[-1], G_dmd, G_vd, snap_str)
 
 if __name__ == "__main__":
     rows = []
